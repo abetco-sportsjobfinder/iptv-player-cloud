@@ -1,66 +1,108 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<meta name="theme-color" content="#0a0a0f" />
-<title>NEON STREAM — Cyber IPTV</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d12" />
+<title>PRISM TV — Live, grouped, everywhere</title>
+<meta name="description" content="Free IPTV browser: 40k+ channels grouped by letter and brand, multi-view, working-status tracking." />
+<link rel="icon" href="/icons/logo.svg" type="image/svg+xml" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-<link rel="stylesheet" href="styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 </head>
 <body>
-<header>
-<button id="sidebarToggle" title="Toggle channel list">☰</button>
-<h1>NEON STREAM</h1>
-<button id="simpleModeToggle" class="glass-button" style="margin-left:auto;padding:8px 16px;font-size:0.85rem">Simple Mode</button>
+
+<div id="boot" class="boot">
+  <div class="boot-mark">◇ PRISM TV</div>
+  <div id="bootMsg">Loading…</div>
+</div>
+
+<header class="topbar">
+  <button id="sidebarToggle" class="icon-btn" aria-label="Toggle sidebar">☰</button>
+  <a class="brand" href="#/"><span class="brand-mark">◇</span> PRISM<span class="brand-tv">TV</span></a>
+  <input id="search" type="search" placeholder="Search 40,000+ channels…   ( / )" autocomplete="off" spellcheck="false" />
+  <span id="statusChip" class="status-chip" title="Confirmed working vs tested channels">counting…</span>
+  <button id="mvBtn" class="icon-btn" title="Multi-view dock" aria-label="Multi-view dock">
+    ⧉ <span id="mvCount" class="mv-badge">0</span>
+  </button>
+  <button id="profileBtn" class="avatar-btn" aria-label="Profile">🐺</button>
 </header>
-<main>
-<aside id="sidebar">
-<div class="list-controls glass-card">
-<input id="search" placeholder="⌕ SEARCH CHANNELS..." autocomplete="off" />
-<button id="quickCategories" class="glass-button" style="width:100%">🎯 Quick Categories</button>
-<select id="country">
-<option value="">🌍 All Countries</option>
-</select>
-<select id="provider">
-<option value="">📡 All Providers</option>
-</select>
-<div id="simpleFilters" style="display:flex;flex-direction:column;gap:10px">
-<label><input type="checkbox" id="favToggle" autocomplete="off"> ⭐ Favorites Only</label>
-<label><input type="checkbox" id="reliableToggle" autocomplete="off"> ⚡ Reliable Only</label>
-<label><input type="checkbox" id="workingToggle" autocomplete="off"> ✅ Tested Working</label>
+
+<div id="app">
+  <nav id="tree" class="sidebar" aria-label="Channel groups"></nav>
+  <main class="main">
+    <section id="hero" class="hero" aria-label="Featured channel"></section>
+    <div class="scope-row">
+      <h1 id="scopeTitle">Browse All</h1>
+      <span id="resultCount" class="result-count"></span>
+    </div>
+    <div id="chips" class="chips" role="tablist" aria-label="Category filter"></div>
+    <div id="grid" class="grid" aria-live="polite"></div>
+  </main>
 </div>
-<div id="sourceToggles" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px"></div>
-<div class="jump">
-<button id="topBtn">↑ TOP</button>
-<button id="bottomBtn">↓ BOTTOM</button>
+
+<div id="mvDock" class="mv-dock">
+  <div class="mv-head">
+    <span>MULTI-VIEW (<span id="mvCount2">0</span>)</span>
+    <button id="mvClear" class="link-btn">clear all</button>
+  </div>
 </div>
-</div>
-<div id="list"><div class="empty">INITIALIZING STREAM MATRIX...</div></div>
-<div id="stats">SYNCING NODE NETWORK...</div>
-</aside>
-<div class="player">
-<div class="glass-card" style="position:absolute;top:16px;left:16px;z-index:10;padding:12px 20px;border-radius:12px">
-<span id="channelStatus" style="color:var(--neon-lime);font-family:var(--font-mono);font-size:0.85rem">● IDLE</span>
-</div>
-<video id="video" controls autoplay playsinline></video>
-<div class="info" id="info">
-<h2>SELECT A CHANNEL</h2>
-<p>Pick from the neon stream matrix. Tap for instant playback.</p>
-</div>
-</div>
-</main>
-<nav class="bottom-nav">
-<ul>
-<li><a href="#" class="active"><span class="icon">📺</span><span class="label">Live</span></a></li>
-<li><a href="#" id="navSearch"><span class="icon">⌕</span><span class="label">Search</span></a></li>
-<li><a href="#" id="navFavs"><span class="icon">⭐</span><span class="label">Favs</span></a></li>
-<li><a href="#" id="navMore"><span class="icon">⚙</span><span class="label">More</span></a></li>
-</ul>
-</nav>
-<script src="app.js"></script>
+
+<dialog id="watch" class="watch" aria-label="Now playing">
+  <div class="watch-head">
+    <div>
+      <h3 id="wTitle">Channel</h3>
+      <div id="wMeta" class="watch-meta"></div>
+    </div>
+    <button id="wClose" class="icon-btn" aria-label="Close player">✕</button>
+  </div>
+  <video id="video" controls autoplay playsinline></video>
+  <div class="watch-bar">
+    <span id="playerMsg" class="player-msg"></span>
+    <span id="wStatusReason" class="player-msg dim"></span>
+    <span class="spacer"></span>
+    <button id="wFav" class="btn-ghost">☆ Favorite</button>
+    <button id="wTest" class="btn-ghost">Test status</button>
+    <button id="wMulti" class="btn-accent">+ Multi-view</button>
+  </div>
+  <div id="wRelated" class="related"></div>
+</dialog>
+
+<dialog id="profilePop" class="profile-pop" aria-label="Profile & settings">
+  <h3>Profile &amp; Settings</h3>
+  <label class="field">Display name
+    <input id="profName" maxlength="24" placeholder="Your name" />
+  </label>
+  <div class="field">Avatar
+    <div id="profAvatars" class="av-row"></div>
+  </div>
+  <div class="field-row">
+    <label class="field">Theme
+      <select id="profTheme">
+        <option value="dark">Dark</option>
+        <option value="midnight">Midnight (OLED)</option>
+        <option value="slate">Slate</option>
+      </select>
+    </label>
+    <label class="field">Accent
+      <select id="profAccent">
+        <option value="indigo">Indigo</option>
+        <option value="cyan">Cyan</option>
+        <option value="violet">Violet</option>
+        <option value="lime">Lime</option>
+        <option value="amber">Amber</option>
+        <option value="rose">Rose</option>
+      </select>
+    </label>
+  </div>
+  <p class="hint">Favorites and stream statuses sync across your devices via the shared proxy.</p>
+  <button id="profClose" class="btn-accent">Done</button>
+</dialog>
+
+<script type="module" src="/js/main.js"></script>
 </body>
 </html>
