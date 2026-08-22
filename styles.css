@@ -1,7 +1,13 @@
 /* PRISM TV - design system. Every component consumes these tokens; themes
    swap token values only, so switching themes genuinely works. */
 
+/* PRISM TV - design system. Every component consumes these tokens; themes
+   swap token values only, so switching themes genuinely works. */
+
 :root {
+  --primary-color: #6366f1;
+  --bg-color: #0b0d12;
+  --text-color: #e8eaf0;
   --bg: #0b0d12;
   --surface: #12151d;
   --surface-2: #1a1e29;
@@ -16,6 +22,22 @@
   --radius: 12px;
   --shadow: 0 8px 30px rgba(0, 0, 0, .45);
   --topbar-h: 60px;
+}
+
+html[data-theme="ocean"] {
+  --bg-color: #1a1405;
+  --primary-color: #e9c46a;
+  --text-color: #1a1a1a;
+}
+
+html[data-theme="purple"] {
+  --primary-color: #a78bfa;
+  --text-color: #1a1a2e;
+}
+
+html[data-theme="forest"] {
+  --primary-color: #76b5c5;
+  --text-color: #e8f4f1;
 }
 
 html[data-theme="midnight"] {

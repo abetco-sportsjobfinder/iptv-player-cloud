@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>NEON MATRIX — IPTV Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Matrix-specific: grid columns, card styling, status heatmap */
+    .channel-grid { display: grid; gap: 4px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .channel-card { border-radius: 6px; overflow: hidden; background: var(--bg-card); transition: transform 0.2s; }
+    .channel-card:hover { transform: translateY(-2px); }
+    .status-heatmap { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: var(--status-working); }
+    .channel-card[data-status="working"] .status-heatmap { background: var(--neon-cyan); }
+    .channel-card[data-status="dead"] .status-heatmap { background: var(--neon-magenta); }
+    .channel-card[data-status="unknown"] .status-heatmap { background: var(--text-secondary); opacity: 0.3; }
+    .neon-matrix-header { padding: 12px 20px; background: var(--bg-card); border-bottom: 1px solid var(--border-glow); }
+    .neon-matrix-main { padding: 12px 20px; min-height: 600px; }
+    .neon-matrix-sidebar { position: fixed; right: 0; top: 0; bottom: 0; width: 300px; padding: 12px; background: var(--bg-card); border-left: 1px solid var(--border-glow); overflow-y: auto; }
+    .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .pill { background: var(--bg); border: 1px solid var(--border-glow); border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; color: var(--text-primary); cursor: pointer; }
+    .pill:hover { background: var(--neon-cyan); color: var(--bg); }
+    .collapse-btn { margin-left: 8px; background: transparent; border: none; color: var(--neon-cyan); cursor: pointer; font-size: 1rem; }
+    #windowCount { color: var(--neon-cyan); font-size: 0.75rem; min-width: 32px; text-align: center; margin-left: 12px; }
+  </style>
+</head>
+<body>
+  <header class="neon-matrix-header">
+    <div class="search-wrapper">
+      <input type="text" id="search" placeholder="⌕ SEARCH CHANNELS..." autocomplete="off" />
+      <div class="pills" id="pills"></div>
+    </div>
+    <div class="controls">
+      <button id="simpleModeToggle" class="glass-button">Simple Mode</button>
+      <select id="themeSelect" class="glass-button" style="margin-left:12px">
+        <option value="default">Default</option><option value="ocean">Ocean</option><option value="purple">Purple</option>
+      </select>
+      <button id="newWindowBtn" class="glass-button" style="padding:4px 8px;font-size:0.75rem">+ Window</button>
+      <span id="windowCount" style="color:var(--neon-cyan);font-size:0.75rem">1W</span>
+    </div>
+  </header>
+  <main class="neon-matrix-main">
+    <div class="channel-grid" id="channelGrid" role="list" aria-live="polite"></div>
+  </main>
+  <aside class="neon-matrix-sidebar" id="filterSidebar">
+    <div class="sidebar-header">
+      <h3>🎯 Quick Filters</h3>
+      <button class="collapse-btn">▶</button>
+    </div>
+    <div class="filter-group">
+      <label><input type="checkbox" id="favToggle" autocomplete="off" /> ⭐ Favorites Only</label>
+      <label><input type="checkbox" id="reliableToggle" autocomplete="off" /> ⚡ Reliable Only</label>
+      <label><input type="checkbox" id="workingToggle" autocomplete="off" /> ✅ Working Only</label>
+    </div>
+    <div class="provider-groups" id="providerGroups"></div>
+    <div class="status-legend" style="margin-top:12px;font-size:0.65rem;">
+      <span style="color:var(--neon-cyan)">🟢</span> Working • <span style="color:var(--neon-magenta)">🔴</span> Dead • <span style="color:var(--neon-lime)">🟡</span> Testing • <span style="color:var(--text-secondary)">⚪</span> Unknown
+    </div>
+  </aside>
+</body>
+</html>

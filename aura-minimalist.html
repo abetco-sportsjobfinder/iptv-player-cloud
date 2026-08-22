@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>AURA — IPTV Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Aura: minimalist, hover-activated, keyboard-driven */
+    body { margin: 0; font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text-primary); }
+    header { background: var(--bg-card); padding: 8px 20px; display: flex; align-items: center; gap: 12px; }
+    header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 1rem; }
+    header .controls { display: flex; gap: 8px; align-items: center; }
+    header .theme-select { display: none; }
+    header:hover .theme-select { display: block; }
+    .main { display: grid; grid-template-rows: 75% 25%; height: 100vh; }
+    .video-zone { background: var(--bg-card); position: relative; overflow: hidden; }
+    .video-zone video { width: 100%; height: 100%; object-fit: cover; }
+    .video-zone .controls { position: absolute; bottom: 0; left: 0; right: 0; padding: 12px; background: linear-gradient(transparent, var(--bg)); }
+    .video-zone .controls button { opacity: 0; transition: opacity 0.2s; }
+    .video-zone:hover .controls button { opacity: 1; }
+    .video-zone:hover button { margin-right: 4px; }
+    .channel-rail { background: var(--bg-card); padding: 8px; overflow-x: auto; display: flex; flex-wrap: wrap; gap: 4px; }
+    .channel-rail .channel { flex: 0 0 120px; background: var(--bg); border-radius: 4; margin: 2px; }
+    .channel-rail .channel:hover { background: var(--bg-card); }
+    .channel-rail .channel.status-working { border-left: 3px solid var(--neon-cyan); }
+    .channel-rail .channel.status-dead { border-left: 3px solid var(--neon-magenta); }
+    .channel-rail .channel .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.75rem; }
+    .channel-rail .channel .status-dot { width: 8px; height: 8px; border-radius: 50; margin-left: 4px; }
+    .sidebar-active .channel-rail { display: flex; }
+    .shortcut-hint { position: fixed; bottom: 12px; right: 12px; background: var(--bg-glass); padding: 8px; font-size: 0.75rem; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">AURA</span>
+    <div class="controls">
+      <button id="simpleModeToggle" class="glass-button">Adv</button>
+      <select id="themeSelect" class="theme-select glass-button"><option value="default">D</option><option value="ocean">O</option></select>
+    </div>
+  </header>
+  <div class="main">
+    <!-- VIDEO ZONE: 75% height -->
+    <div class="video-zone" id="videoZone">
+      <video id="video" autoplay playsinline></video>
+      <div class="controls">
+        <button>PiP</button><span id="statusIcon" style="color:var(--neon-cyan);margin-left:12px">🟢</span>
+        <span id="channelName" style="margin-left:12px"></span>
+      </div>
+    </div>
+    <!-- CHANNEL RAIL: 25% height, hidden until interaction -->
+    <div class="channel-rail" id="channelRail">
+      <!-- Channels rendered by JS -->
+      <div class="channel status-working"><div class="name">ABC News</div><span class="status-dot"></span></div>
+      <div class="channel status-dead"><div class="name">Dead Channel</div><span class="status-dot"></span></div>
+    </div>
+  </div>
+  <div class="shortcut-hint">j/k: navigate  |  numbers: select  |  space: play/pause  |  f: search  |  c: favorites</div>
+
+  <script>
+    // Initialize rail visibility on hover/focus
+    const rail = document.getElementById('channelRail');
+    const body = document.body;
+    
+    // Show rail on mouseenter or Cmd/Ctrl+Shift+downarrow
+    let railTimeout;
+    body.addEventListener('mouseenter', () => {
+      rail.classList.add('sidebar-active');
+      clearTimeout(railTimeout);
+    });
+    body.addEventListener('mouseleave', () => {
+      railTimeout = setTimeout(() => rail.classList.remove('sidebar-active'), 1500);
+    });
+    
+    // Keyboard shortcut Cmd/Ctrl+Shift+Down to show rail
+    document.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'Down') {
+        rail.classList.add('sidebar-active');
+      }
+    });
+  </script>
+</body>
+</html>

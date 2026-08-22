@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>IPTV Multi-View — Grid Display</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* ========================================
+       MULTI-VIEW / QUAD DISPLAY LAYOUT
+       ======================================== */
+
+    :root {
+      --header-h: 64px;
+      --grid-gap: 6px;
+      --cell-size: 240px;
+      --sidebar-w: 300px;
+    }
+
+    /* Header */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: var(--bg); padding: 8px 16px;
+      height: var(--header-h); display: flex; align-items: center; gap: 12px;
+      z-index: 100; border-bottom: 1px solid var(--border-glow);
+    }
+    .header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 0.8rem; }
+    .header .search-wrapper { flex: 1; max-width: 400px; }
+    .header .search-wrapper input { width: 100%; padding: 6px 12px 6px 32px; background: var(--bg-glass); border: 1px solid var(--border-glow); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; }
+    .header .search-wrapper .icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.85rem; }
+    .header .mode-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 12px; }
+    .header .mode-pill { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border-glow); border-radius: 4px; font-size: 0.7rem; color: var(--text-primary); cursor: pointer; white-space: nowrap; }
+    .header .mode-pill.active { background: var(--neon-cyan); color: var(--bg); }
+
+    /* Main content area */
+    .main { margin-top: var(--header-h); margin-left: 0; padding: 16px; }
+
+    /* ========================================
+       GRID DISPLAY (QUAD / MULTI-VIEW)
+       ======================================== */
+
+    .multi-view { display: grid; gap: var(--grid-gap); }
+    /* 1 cell = single */
+    .multi-view.cell-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+    /* 2 cells = split */
+    .multi-view.cell-2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+    /* 3 cells */
+    .multi-view.cell-3 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr; }
+    /* 4 cells = QUAD view */
+    .multi-view.cell-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    /* 5 cells */
+    .multi-view.cell-5 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    /* 6 cells */
+    .multi-view.cell-6 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    /* 6+ cells */
+    .multi-view.cell-7 { grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    /* 8 cells */
+    .multi-view.cell-8 { grid-template-columns: 1fr 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+    .grid-cell { background: var(--bg-card); border: 1px solid var(--border-glow); border-radius: 8px; overflow: hidden; position: relative; }
+    .grid-cell video { width: 100%; height: 100%; object-fit: cover; }
+    .grid-cell .channel-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px; background: linear-gradient(transparent, var(--bg)); font-size: 0.65rem; }
+    .grid-cell .channel-name { font-size: 0.55rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .grid-cell .channel-status { font-size: 0.45rem; }
+    .grid-cell .status-working { color: var(--neon-cyan); }
+    .grid-cell .status-dead { color: var(--neon-magenta); }
+    .grid-cell .status-unknown { color: var(--text-secondary); }
+
+    /* ========================================
+       CHANNEL SELECTION / MULTI-SELECT
+       ======================================== */
+
+    .channel-list { margin-top: 16px; }
+    .channel-item { padding: 8px; background: var(--bg); border-radius: 4px; margin: 4px 0; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .channel-item:hover { background: var(--bg-hover); }
+    .channel-item.selected { background: var(--neon-cyan); color: var(--bg); }
+    .channel-item .check { width: 16px; height: 16px; flex-shrink: 0; border: 2px solid var(--bg); border-radius: 2px; position: relative; }
+    .channel-item.selected .check { border-color: var(--neon-cyan); }
+    .channel-item.selected .check::after { content: '✓'; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: var(--neon-cyan); font-size: 0.6rem; }
+    .channel-item .channel-name { flex: 1; font-size: 0.75rem; }
+    .channel-item .channel-status { font-size: 0.5rem; white-space: nowrap; }
+
+    /* ========================================
+       STATUS INDICATORS
+       ======================================== */
+
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50; margin-right: 4px; }
+    .status-working { background: var(--neon-cyan); }
+    .status-dead { background: var(--neon-magenta); }
+    .status-unknown { background: var(--text-secondary); opacity: 0.3; }
+
+    /* ========================================
+       EMPTY STATE
+       ======================================== */
+
+    .empty { text-align: center; color: var(--text-secondary); padding: 40px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <span class="logo">IPTV MULTI-VIEW</span>
+    <div class="search-wrapper">
+      <span class="icon">⌕</span>
+      <input type="text" id="search" placeholder="Search channels..." autocomplete="off" />
+    </div>
+    <div class="mode-pills">
+      <button class="mode-pill active" data-mode="quad" onclick="setMode('quad')">Quad</button>
+      <button class="mode-pill" data-mode="single" onclick="setMode('single')">Single</button>
+      <button class="mode-pill" data-mode="favorites" onclick="setMode('favorites')">Favorites</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <!-- GRID CONTAINER: dynamically changes cells based on mode -->
+    <div class="multi-view" id="multiView" class="cell-4">
+      <!-- Grid cells rendered by JS -->
+    </div>
+    <div class="empty" id="empty">Select channels to display</div>
+  </main>
+
+  <div class="channel-list">
+    <div style="font-size: 0.7rem; color: var(--text-secondary); margin-bottom: 8px;">Select channels for multi-view grid:</div>
+    <div id="channelList">
+      <!-- Channel items rendered by JS -->
+    </div>
+  </div>
+
+  <script>
+    // ========================================
+    // MULTI-VIEW / QUAD DISPLAY LOGIC
+    // ========================================
+
+    let currentMode = 'quad'; // 'quad', 'single', 'favorites'
+    let selectedChannels = []; // Channels selected for grid display
+
+    // ========================================
+    // CHANNEL DATA - based on actual IPTV player structure
+    // ========================================
+
+    const allChannels = [
+      // Working channels
+      { id: '1', name: 'ABC News', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '2', name: 'ESPN', status: 'working', categories: ['sports'], tvgId: '' },
+      { id: '3', name: 'CNN', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '4', name: 'BBC World', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '5', name: 'Fox Sports', status: 'working', categories: ['sports'], tvgId: '' },
+      // Dead channels
+      { id: '6', name: 'BBC America', status: 'dead', categories: ['entertainment'], tvgId: '' },
+      // Unknown channels
+      { id: '7', name: 'CNN International', status: 'unknown', categories: ['news'], tvgId: '' },
+      // More channels
+      { id: '8', name: 'HBO', status: 'working', categories: ['movies'], tvgId: '' },
+      { id: '9', name: 'Showtime', status: 'working', categories: ['movies'], tvgId: '' },
+      { id: '10', name: 'Disney+', status: 'working', categories: ['entertainment'], tvgId: '' }
+    ];
+
+    // ========================================
+    // GRID RENDERING
+    // ========================================
+
+    const grid = document.getElementById('multiView');
+    const empty = document.getElementById('empty');
+    const channelList = document.getElementById('channelList');
+
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-pill').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+
+      // Determine which channels to show based on mode
+      let channelsToShow;
+      if (mode === 'favorites') {
+        // Show working channels as "favorites"
+        channelsToShow = allChannels.filter(c => c.status === 'working').slice(0, 4);
+      } else if (mode === 'single') {
+        // Show just the first channel in a single cell
+        channelsToShow = allChannels.slice(0, 1);
+      } else {
+        // Quad view - show up to 4 channels
+        channelsToShow = allChannels.slice(0, 4);
+      }
+
+      selectedChannels = channelsToShow;
+      renderGrid(channelsToShow);
+    }
+
+    function renderGrid(channels) {
+      grid.innerHTML = '';
+      if (!channels || channels.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+
+      // Determine grid cell count based on mode and channel count
+      const maxCells = currentMode === 'single' ? 1 : 
+                       currentMode === 'favorites' ? 4 : 4; // quad max 4
+      const cellCount = Math.min(channels.length, maxCells);
+
+      // Set the grid cell class
+      grid.setAttribute('class', `multi-view cell-${cellCount}`);
+
+      channels.forEach((channel, index) => {
+        const statusLabels = { working: '🟢', dead: '🔴', unknown: '⚪' };
+        const statusClass = channel.status;
+        const statusLabel = statusLabels[channel.status] || '⚪';
+
+        const cell = document.createElement('div');
+        cell.className = 'grid-cell';
+        cell.innerHTML = `
+          <video playsinline muted controls>
+            <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+          <div class="channel-info">
+            <div class="channel-name">${channel.name}</div>
+            <span class="channel-status status-${channel.status}">${statusLabel}</span>
+          </div>
+        `;
+
+        // Make cell clickable to toggle selection
+        cell.style.cursor = 'pointer';
+        cell.addEventListener('click', () => toggleChannelSelection(index));
+
+        grid.appendChild(cell);
+      });
+    }
+
+    function toggleChannelSelection(index) {
+      const channelId = allChannels[index].id;
+
+      // Check if already selected
+      const idx = selectedChannels.findIndex(c => c.id === channelId);
+      if (idx !== -1) {
+        // Deselect
+        selectedChannels.splice(idx, 1);
+      } else {
+        // Select - add to selected array, but limit to max cells
+        if (selectedChannels.length >= 4) {
+          // Remove the first selected to make room
+          selectedChannels.shift();
+        }
+        selectedChannels.push(allChannels[index]);
+      }
+
+      // Re-render grid with current selection
+      renderGrid(selectedChannels);
+    }
+
+    // ========================================
+    // CHANNEL LIST RENDERING
+    // ========================================
+
+    function renderChannelList() {
+      channelList.innerHTML = '';
+      allChannels.forEach((channel, index) => {
+        const statusLabels = { working: '🟢', dead: '🔴', unknown: '⚪' };
+        const li = document.createElement('div');
+        li.className = 'channel-item' + (selectedChannels.some(c => c.id === channel.id) ? ' selected' : '');
+        li.innerHTML = `
+          <div class="check"></div>
+          <span class="channel-name">${channel.name}</span>
+          <span class="channel-status status-${channel.status}">${statusLabels[channel.status]}</span>
+        `;
+        li.addEventListener('click', () => toggleChannelSelection(index));
+        channelList.appendChild(li);
+      });
+    }
+
+    // ========================================
+    // INITIALIZATION
+    // ========================================
+
+    // Initial render - quad mode with first 4 channels
+    renderGrid(allChannels.slice(0, 4));
+    renderChannelList();
+  </script>
+</body>
+</html>

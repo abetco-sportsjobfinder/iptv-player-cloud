@@ -12,22 +12,27 @@ const CHUNK = 60;
 let io = null;
 let pending = [];
 
-function cardHTML(c) {
+export function cardHTML(c, isSelected) {
   const st = getStatus(c.id);
   const dot = { working: 'ok', dead: 'dead', testing: 'testing' }[st] || '';
   const fav = state.favorites.has(c.id);
   const blocked = db.blocklist.has(c.id);
+  // NEW: Selection state for quad view
+  const selected = isSelected ? ' selected' : '';
+  // NEW: Deselect button shown only in selection mode
+  const deselectBtn = isSelected ? '<button class="deselect-btn" title="Deselect">✕</button>' : '';
   // Fallback initial always rendered underneath; failed logos simply hide.
   const logo = c.logo
     ? `<img class="thumb-img" loading="lazy" src="${esc(c.logo)}" alt="" onerror="this.style.display='none'">`
     : '';
   return `
-  <article class="card ${blocked ? 'is-blocked' : ''}" data-id="${esc(c.id)}" tabindex="0" role="button"
+  <article class="card${selected} ${blocked ? 'is-blocked' : ''}" data-id="${esc(c.id)}" tabindex="0" role="button"
            aria-label="${esc(c.name)}">
     <div class="thumb"><span class="thumb-fallback">${esc((c.name[0] || '?').toUpperCase())}</span>${logo}
       <span class="dot ${dot}" title="${st}"></span>
       <button class="fav-btn ${fav ? 'on' : ''}" title="Favorite" aria-label="Toggle favorite">${fav ? '\u2605' : '\u2606'}</button>
       <button class="mv-add" title="Add to multi-view" aria-label="Add to multi-view">+</button>
+      ${deselectBtn}
       ${blocked ? '<span class="blocked-tag">BLOCKED</span>' : ''}
       <span class="play-hint">\u25B6</span>
     </div>
@@ -96,14 +101,39 @@ export function updateFavButtons() {
 // Event delegation: one listener for the whole grid
 export function bindGrid({ onOpen }) {
   const grid = document.getElementById('grid');
+  
+  // NEW: Clean up existing event listeners to prevent accumulation
+  const oldGrid = document.getElementById('oldGrid');
+  if (oldGrid) {
+    oldGrid.innerHTML = grid.innerHTML;
+    oldGrid.remove();
+  }
+  
   grid.addEventListener('click', e => {
     const card = e.target.closest('.card');
     if (!card) return;
     const id = card.dataset.id;
     if (e.target.closest('.fav-btn')) { toggleFavorite(id); return; }
     if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
-    onOpen.watch(id);
+    if (e.target.closest('.deselect-btn')) {
+      selectedChannelIds.delete(id);
+      window.selectedChannelIds = selectedChannelIds;
+      renderGrid(Array.from(db.byId.values()).filter(c => selectedChannelIds.has(c.id)));
+      updateFavButtons();
+      return;
+    }
+    
+    // NEW: Toggle channel selection for quad view
+    if (selectedChannelIds.has(id)) {
+      selectedChannelIds.delete(id);
+    } else {
+      selectedChannelIds.add(id);
+    }
+    window.selectedChannelIds = selectedChannelIds;
+    renderGrid(Array.from(db.byId.values()).filter(c => selectedChannelIds.has(c.id)));
+    updateFavButtons();
   });
+  
   grid.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('card')) {
       e.preventDefault();

@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>IPTV Player — Channel Grid with Grouping</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Based on actual app.js features */
+    :root { --sidebar-w: 280px; --header-h: 64px; }
+    .header { position: fixed; top: 0; left: 0; right: 0; background: var(--bg); padding: 8px 16px; height: var(--header-h); display: flex; align-items: center; gap: 12px; z-index: 100; }
+    .header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 0.9rem; }
+    .search-wrapper { position: relative; flex: 1; max-width: 400px; }
+    .search-wrapper input { width: 100%; padding: 6px 12px 6px 32px; background: var(--bg-glass); border: 1px solid var(--border-glow); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; }
+    .search-wrapper input::placeholder { color: var(--text-secondary); }
+    .search-wrapper .icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.85rem; }
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 12px; }
+    .filter-btn { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border-glow); border-radius: 4px; font-size: 0.7rem; color: var(--text-primary); cursor: pointer; white-space: nowrap; }
+    .filter-btn:hover { background: var(--neon-cyan); color: var(--bg); }
+    .filter-btn.active { background: var(--neon-cyan); color: var(--bg); }
+    .main { margin-top: var(--header-h); margin-left: var(--sidebar-w); margin-right: 0; padding: 16px; }
+    .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+    .channel-card { background: var(--bg-card); border: 1px solid var(--border-glow); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
+    .channel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .channel-provider { font-size: 0.65rem; color: var(--neon-cyan); background: rgba(0,255,255,0.03); padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+    .channel-name { font-size: 0.8rem; font-weight: 600; height: 1.8rem; overflow: hidden; } /* 2-line cap */
+    .channel-meta { font-size: 0.65rem; color: var(--text-secondary); height: 1.4rem; overflow: hidden; display: flex; align-items: center; gap: 4px; }
+    .channel-status { font-size: 0.6rem; padding: 2px 6px; border-radius: 3px; margin-top: 4px; }
+    .status-working { background: rgba(0,255,255,0.1); color: var(--neon-cyan); }
+    .status-dead { background: rgba(255,0,255,0.1); color: var(--neon-magenta); }
+    .status-unknown { background: rgba(168,168,168,0.1); color: var(--text-secondary); }
+    .empty { text-align: center; color: var(--text-secondary); padding: 40px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="logo">IPTV PLAYER</span>
+    <div class="search-wrapper">
+      <span class="icon">⌕</span>
+      <input type="text" id="search" placeholder="Search channels..." autocomplete="off" />
+    </div>
+    <div class="filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="working">Working Only</button>
+      <button class="filter-btn" data-filter="dead">Dead Only</button>
+      <button class="filter-btn" data-filter="favs">Favorites Only</button>
+      <button class="filter-btn" data-filter="reliable">Reliable Only</button>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="grid" id="channelGrid">
+      <!-- CHANNELS RENDERED BY JS -->
+    </div>
+    <div class="empty" id="empty">Select filters to view channels</div>
+  </main>
+
+  <script>
+    // Example channel data based on actual app.js structure
+    // With provider grouping and category badges
+    const exampleChannels = [
+      {
+        id: '1',
+        name: 'BUMBLEBEE TV',
+        provider: 'BUMBLEBEE TV',
+        categories: ['entertainment'],
+        logo: '',
+        status: 'working'
+      },
+      {
+        id: '2',
+        name: 'BUMBLEBEE TV +1',
+        provider: 'BUMBLEBEE TV',
+        categories: ['entertainment'],
+        logo: '',
+        status: 'working'
+      },
+      {
+        id: '3',
+        name: '13TH STREET',
+        provider: '13TH STREET',
+        categories: ['movies'],
+        logo: '',
+        status: 'working'
+      },
+      {
+        id: '4',
+        name: 'ABC News Live',
+        provider: 'ABC News',
+        categories: ['news'],
+        logo: '',
+        status: 'dead'
+      },
+      {
+        id: '5',
+        name: 'WTIC-TV 61.4',
+        provider: 'WTIC-TV',
+        categories: ['news'],
+        logo: '',
+        status: 'unknown'
+      }
+    ];
+
+    const grid = document.getElementById('channelGrid');
+    const empty = document.getElementById('empty');
+
+    function renderChannel(channel) {
+      const statusClass = channel.status;
+      const statusLabels = { working: '🟢 working', dead: '🔴 dead', unknown: '⚪ unknown' };
+      const providerBadge = `<span class="channel-provider">${channel.provider}</span>`;
+      const categories = channel.categories ? channel.categories.map(c => c).join(' ') : '';
+      const meta = categories ? `<span>${categories}</span>` : '';
+
+      return `
+        <div class="channel-card">
+          <div class="channel-header">
+            <span>${providerBadge}</span>
+            <div class="channel-name">${channel.name}</div>
+          </div>
+          <div class="channel-meta">${meta}</div>
+          <span class="channel-status status-${statusClass}">${statusLabels[statusClass] || '⚪ unknown'}</span>
+        </div>
+      `;
+    }
+
+    function renderGrid(channels) {
+      grid.innerHTML = '';
+      if (channels.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      grid.innerHTML = channels.map(renderChannel).join('');
+    }
+
+    // Initial render
+    renderGrid(exampleChannels);
+
+    // Simple filter logic
+    const filters = document.querySelectorAll('.filter-btn');
+    filters.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filters.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const filter = btn.getAttribute('data-filter');
+        // In real app, this would filter the actual channel list
+        console.log('Filter applied:', filter);
+      });
+    });
+  </script>
+</body>
+</html>

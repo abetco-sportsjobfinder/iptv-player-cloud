@@ -24,16 +24,23 @@
 <header class="topbar">
   <button id="sidebarToggle" class="icon-btn" aria-label="Toggle sidebar">☰</button>
   <a class="brand" href="#/"><span class="brand-mark">◇</span> PRISM<span class="brand-tv">TV</span></a>
-  <input id="search" type="search" placeholder="Search 40,000+ channels…   ( / )" autocomplete="off" spellcheck="false" />
+  <input id="search" type="search" placeholder="Search 40,000+ channels…   ( / )" autocomplete="off" spellcheck="false" oninput="handleSearchInput()"/>
   <span id="statusChip" class="status-chip" title="Confirmed working vs tested channels">counting…</span>
   <button id="mvBtn" class="icon-btn" title="Multi-view dock" aria-label="Multi-view dock">
     ⧉ <span id="mvCount" class="mv-badge">0</span>
   </button>
   <button id="profileBtn" class="avatar-btn" aria-label="Profile">🐺</button>
+  <button id="simpleModeBtn" class="icon-btn" aria-label="Simple/Toggle Advanced Mode">A</button>
 </header>
 
 <div id="app">
-  <nav id="tree" class="sidebar" aria-label="Channel groups"></nav>
+  <nav id="tree" class="sidebar" aria-label="Channel groups">
+    <div id="modePills" style="display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap;">
+      <button class="chip on" data-view="quad" onclick="setViewMode('quad')">Quad</button>
+      <button class="chip" data-view="single" onclick="setViewMode('single')">Single</button>
+      <button class="chip" data-view="favorites" onclick="setViewMode('favorites')">Favorites</button>
+    </div>
+  </nav>
   <main class="main">
     <section id="hero" class="hero" aria-label="Featured channel"></section>
     <div class="scope-row">

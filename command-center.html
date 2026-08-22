@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>COMMAND CENTER — IPTV Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Dashboard: two-pane layout, splitter, widget styling */
+    #dashboard { display: grid; grid-template-areas: "tree preview" "status player"; grid-template-rows: 60% 40%; grid-template-columns: 30% 70%; height: 100vh; font-family: 'Inter', sans-serif; }
+    #treeArea { grid-area: tree; border-right: 1px solid var(--border-glow); overflow-y: auto; }
+    #previewArea { grid-area: preview; padding: 12px; background: var(--bg-card); }
+    #statusArea { grid-area: status; padding: 8px; background: var(--bg-glass); }
+    #playerArea { grid-area: player; }
+    .splitter { grid-area: /; cursor: col-resize; background: var(--border-glow); }
+    .channel-tree { padding: 8px; }
+    .tree-node { padding: 4px 8px; margin: 2px 0; border-radius: 4; cursor: pointer; }
+    .tree-node:hover { background: rgba(0,255,255,0.03); }
+    .tree-node.status-working { color: var(--neon-cyan); }
+    .tree-node.status-dead { color: var(--neon-magenta); }
+    .tree-node.status-unknown { color: var(--text-secondary); }
+    .preview-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
+    .preview-thumb { height: 60px; background: var(--bg-card); border-radius: 4; }
+    .player { width: 100%; height: 300px; background: var(--bg-card); }
+    .info-panel { padding: 12px; }
+    .status-dashboard div { margin: 4px 0; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div id="dashboard">
+    <!-- LEFT: Channel Tree Browser -->
+    <div id="treeArea">
+      <h3>📺 Channel Tree</h3>
+      <div class="channel-tree" id="channelTree">
+        <!-- Tree nodes: provider → category → channels -->
+      </div>
+    </div>
+
+    <!-- RIGHT: Preview Grid -->
+    <div id="previewArea">
+      <h3>👀 Live Preview</h3>
+      <div class="preview-grid" id="previewGrid"></div>
+    </div>
+
+    <!-- CENTER SPLITTER -->
+    <div class="splitter" id="splitter"></div>
+
+    <!-- RIGHT-BOTTOM: Status Dashboard -->
+    <div id="statusArea">
+      <h3>📊 Status Dashboard</h3>
+      <div>🟢 <span id="workingCount">0</span> Working</div>
+      <div>🔴 <span id="deadCount">0</span> Dead</div>
+      <div>⚪ <span id="unknownCount">0</span> Untested</div>
+      <div>Channels: <span id="totalCount">0</span></div>
+    </div>
+
+    <!-- BOTTOM-RIGHT: Video Player -->
+    <div id="playerArea">
+      <h3>▶️ Video Player</h3>
+      <video id="video" controls autoplay playsinline></video>
+    </div>
+  </div>
+</body>
+</html>

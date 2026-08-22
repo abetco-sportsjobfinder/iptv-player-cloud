@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>IPTV Player — Multi-Window View</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root { --sidebar-w: 250px; --header-h: 60px; }
+    .header { position: fixed; top: 0; left: 0; right: 0; background: var(--bg); padding: 0 16px; height: var(--header-h); display: flex; align-items: center; gap: 12px; z-index: 100; border-bottom: 1px solid var(--border-glow); }
+    .header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 0.8rem; }
+    .header .window-manager { display: flex; align-items: center; gap: 8px; }
+    .window-btn { padding: 3px 8px; background: var(--bg); border: 1px solid var(--border-glow); border-radius: 4px; font-size: 0.6rem; color: var(--neon-cyan); white-space: nowrap; cursor: pointer; }
+    .window-btn.active { background: var(--neon-cyan); color: var(--bg); }
+    .window-list { display: flex; align-items: center; gap: 4px; }
+    .window-item { padding: 4px 8px; background: var(--bg); border: 1px solid var(--neon-cyan); border-radius: 4px; font-size: 0.6rem; color: var(--neon-cyan); margin-left: 4px; white-space: nowrap; }
+    .window-item.active { border-width: 2px; }
+    .main { margin-top: var(--header-h); margin-left: var(--sidebar-w); padding: 16px; }
+    .channel-card { background: var(--bg-card); border: 1px solid var(--border-glow); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; height: 140px; }
+    .channel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .channel-name { font-size: 0.75rem; font-weight: 600; height: 1.6rem; overflow: hidden; }
+    .channel-meta { font-size: 0.55rem; color: var(--text-secondary); height: 1.2rem; overflow: hidden; display: flex; align-items: center; gap: 4px; }
+    .channel-status { font-size: 0.5rem; align-self: flex-end; }
+    .empty { text-align: center; color: var(--text-secondary); padding: 20px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <span class="logo">IPTV PLAYER</span>
+    <div class="window-manager">
+      <button class="window-btn" onclick="createWindow()">+ Window</button>
+      <div class="window-list" id="windowList">
+        <!-- Window items rendered by JS -->
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="grid" id="channelGrid">
+      <!-- Primary window channels -->
+    </div>
+    <div class="empty" id="empty">Select a channel to watch</div>
+  </main>
+
+  <script>
+    // Multi-window state based on actual app.js windowManager
+    let windowCount = 1;
+    let windows = [{ id: 'main', channels: [], active: true }];
+    
+    function createWindow() {
+      const newId = `window-${windowCount++}`;
+      windows.push({ id: newId, channels: [], active: false });
+      renderWindows();
+      console.log('Created window:', newId);
+    }
+
+    function renderWindows() {
+      const list = document.getElementById('windowList');
+      list.innerHTML = windows.map((w, i) => {
+        const active = w.active ? 'active' : '';
+        return `<div class="window-item ${active}" onclick="setActiveWindow('${w.id}')">${w.id.split('-')[1]}</div>`;
+      }).join('');
+    }
+
+    function setActiveWindow(id) {
+      windows.forEach(w => w.active = w.id === id);
+      renderWindows();
+      // In real app, would switch the main channel grid
+      console.log('Switched to window:', id);
+    }
+
+    // Initial render
+    renderWindows();
+
+    // Example channels
+    const exampleChannels = [
+      { id: '1', name: 'ABC News', status: 'working', categories: ['news'] },
+      { id: '2', name: 'ESPN', status: 'working', categories: ['sports'] },
+      { id: '3', name: 'CNN', status: 'unknown', categories: ['news'] }
+    ];
+
+    const grid = document.getElementById('channelGrid');
+    const empty = document.getElementById('empty');
+
+    function renderChannel(cardId) {
+      const ch = exampleChannels.find(c => c.id === cardId);
+      if (!ch) return '';
+      const statusLabels = { working: '🟢', dead: '🔴', unknown: '⚪' };
+      return `
+        <div class="channel-card">
+          <div class="channel-header">
+            <span>${ch.name}</span>
+            <span class="channel-status">${statusLabels[ch.status] || '⚪'}</span>
+          </div>
+          <div class="channel-meta">Channel ${ch.id}</div>
+        </div>
+      `;
+    }
+
+    function renderGrid(channels) {
+      grid.innerHTML = '';
+      if (!channels || channels.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      grid.innerHTML = channels.map(renderChannel).join('');
+    }
+
+    // Render initial channel
+    renderGrid(exampleChannels);
+  </script>
+</body>
+</html>

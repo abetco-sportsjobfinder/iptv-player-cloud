@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>IPTV Player — Hierarchical Channel Groups</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    :root { --sidebar-w: 300px; --header-h: 70px; }
+    .header { position: fixed; top: 0; left: 0; right: 0; background: var(--bg); padding: 0 16px; height: var(--header-h); display: flex; align-items: center; gap: 16px; z-index: 100; border-bottom: 1px solid var(--border-glow); }
+    .header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 0.85rem; }
+    .header .window-btn { background: var(--bg); border: 1px solid var(--border-glow); border-radius: 20px; padding: 4px 10px; font-size: 0.65rem; color: var(--neon-cyan); white-space: nowrap; }
+    .header .window-btn.active { background: var(--neon-cyan); color: var(--bg); }
+    .main { margin-top: var(--header-h); margin-left: var(--sidebar-w); padding: 16px 24px; }
+    .provider-group { background: rgba(0,255,255,0.03); border: 1px solid var(--border-glow); border-radius: 8px; padding: 12px; margin: 8px 0; }
+    .provider-header { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+    .provider-name { color: var(--neon-cyan); font-weight: 600; font-size: 0.75rem; }
+    .provider-toggle { width: 16px; height: 16px; flex-shrink: 0; }
+    .provider-toggle.open { transform: rotate(90deg); }
+    .provider-content { margin-top: 8px; display: none; }
+    .provider-content.open { display: block; }
+    .category-bar { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+    .category-tag { background: rgba(0,255,255,0.05); color: var(--neon-cyan); padding: 2px 6px; border-radius: 3px; font-size: 0.55rem; white-space: nowrap; }
+    .channel-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--bg); }
+    .channel-row:last-child { border-bottom: none; }
+    .channel-name { font-size: 0.7rem; flex: 1; }
+    .channel-status { font-size: 0.55rem; }
+    .status-working { color: var(--neon-cyan); }
+    .status-dead { color: var(--neon-magenta); }
+    .status-unknown { color: var(--text-secondary); }
+    .sidebar { position: fixed; left: 0; top: var(--header-h); bottom: 0; width: var(--sidebar-w); background: var(--bg); border-right: 1px solid var(--border-glow); padding: 12px; overflow-y: auto; }
+    .sidebar .provider { color: var(--neon-cyan); margin: 8px 0; font-size: 0.65rem; }
+    .sidebar .category { color: var(--neon-cyan); font-size: 0.55rem; margin: 4px 0; }
+    .sidebar .status-dot { width: 6px; height: 6px; border-radius: 50; margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <div class="sidebar" id="sidebar">
+    <!-- Channels grouped by provider with expand/collapse -->
+  </div>
+
+  <main class="main">
+    <div class="grid" id="channelGrid">
+      <!-- Hierarchical channels rendered by JS -->
+    </div>
+  </main>
+
+  <script>
+    // Example data with hierarchical grouping based on actual app.js structure
+    const exampleData = {
+      providers: {
+        'BUMBLEBEE TV': {
+          channels: [
+            { id: '1', name: 'BUMBLEBEE TV Show 1', categories: ['entertainment'], status: 'working' },
+            { id: '2', name: 'BUMBLEBEE TV Show 2', categories: ['entertainment'], status: 'working' },
+            { id: '3', name: 'BUMBLEBEE TV Show 3', categories: ['movies'], status: 'dead' }
+          ]
+        },
+        '13TH STREET': {
+          channels: [
+            { id: '4', name: '13TH STREET Movie 1', categories: ['movies'], status: 'working' },
+            { id: '5', name: '13TH STREET Movie 2', categories: ['movies'], status: 'working' }
+          ]
+        },
+        'ABC News': {
+          channels: [
+            { id: '6', name: 'ABC News Live', categories: ['news'], status: 'dead' }
+          ]
+        }
+      }
+    };
+
+    const sidebar = document.getElementById('sidebar');
+    const grid = document.getElementById('channelGrid');
+
+    function renderProvider(providerName, providerData) {
+      const channels = providerData.channels;
+      const hasMultiple = channels.length > 1;
+      
+      let html = `
+        <div class="provider-group" data-provider="${providerName}">
+          <div class="provider-header" onclick="toggleProvider('${providerName}')">
+            <span class="provider-name">${providerName}</span>
+            <span class="provider-toggle">${hasMultiple ? '▶' : ''}</span>
+          </div>
+          <div class="provider-content">
+      `;
+
+      html += channels.map(ch => {
+        const statusLabels = { working: '🟢', dead: '🔴', unknown: '⚪' };
+        return `
+          <div class="channel-row">
+            <span class="channel-name">${ch.name}</span>
+            <span class="channel-status status-${ch.status}">${statusLabels[ch.status] || '⚪'}</span>
+          </div>
+        `;
+      }).join('');
+
+      html += `</div></div>`;
+      return html;
+    }
+
+    function renderSidebar() {
+      let html = '';
+      const providers = exampleData.providers;
+      const providerNames = Object.keys(providers).sort();
+      
+      providerNames.forEach(name => {
+        html += renderProvider(name, providers[name]);
+      });
+      
+      sidebar.innerHTML = html;
+    }
+
+    function renderGrid() {
+      grid.innerHTML = '';
+      // Could also render main grid view here
+    }
+
+    // Toggle provider expand/collapse
+    window.toggleProvider = function(name) {
+      const group = document.querySelector(`[data-provider="${name}"]`);
+      const content = group.querySelector('.provider-content');
+      const toggle = group.querySelector('.provider-toggle');
+      
+      if (content.style.display === 'none' || content === '') {
+        content.style.display = 'block';
+        if (toggle) toggle.classList.add('open');
+        toggle.innerHTML = '▼';
+      } else {
+        content.style.display = 'none';
+        if (toggle) toggle.classList.remove('open');
+        toggle.innerHTML = '▶';
+      }
+    };
+
+    // Initialize
+    renderSidebar();
+    renderGrid();
+  </script>
+</body>
+</html>

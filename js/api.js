@@ -3,6 +3,7 @@ import { state } from './state.js';
 
 const API = 'https://iptv-org.github.io/api';
 export const PROXY = 'https://iptv-stream-proxy.abetscrape.workers.dev';
+export const CUSTOM_LOGO_URL = ''; // ABET logo with spinning chip
 
 const SOURCES = [
   { key: 'iptvorg', type: 'api' },

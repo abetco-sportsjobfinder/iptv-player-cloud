@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>IPTV Player — Multi-View / Quad Display</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Multi-View Grid Layout */
+    :root { --grid-gap: 4px; --cell-size: 260px; }
+    .header { position: fixed; top: 0; left: 0; right: 0; background: var(--bg); padding: 8px 16px; height: var(--header-h); display: flex; align-items: center; gap: 12px; z-index: 100; border-bottom: 1px solid var(--border-glow); }
+    .header .logo { color: var(--neon-cyan); font-weight: 700; font-size: 0.8rem; }
+    .header .search-wrapper { flex: 1; max-width: 400px; }
+    .header .search-wrapper input { width: 100%; padding: 6px 12px 6px 32px; background: var(--bg-glass); border: 1px solid var(--border-glow); border-radius: 6px; color: var(--text-primary); font-size: 0.85rem; }
+    .header .search-wrapper .icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); font-size: 0.85rem; }
+    .header .filter-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: 12px; }
+    .header .filter-pill { padding: 4px 8px; background: var(--bg); border: 1px solid var(--border-glow); border-radius: 4px; font-size: 0.7rem; color: var(--text-primary); cursor: pointer; white-space: nowrap; }
+    .header .filter-pill.active { background: var(--neon-cyan); color: var(--bg); }
+    .main { margin-top: var(--header-h); margin-left: 0; padding: 16px; }
+    
+    /* Multi-View Grid */
+    .multi-view { display: grid; gap: var(--grid-gap); }
+    .multi-view.cell-1 { grid-template-columns: repeat(1, 1fr); grid-template-rows: repeat(1, 1fr); }
+    .multi-view.cell-2 { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(1, 1fr); }
+    .multi-view.cell-3 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(1, 1fr); }
+    .multi-view.cell-4 { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .multi-view.cell-5 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .multi-view.cell-6 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .multi-view.cell-7 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .multi-view.cell-8 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); }
+    .multi-view.cell-9 { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
+    
+    .grid-cell { background: var(--bg-card); border: 1px solid var(--border-glow); border-radius: 8px; overflow: hidden; position: relative; }
+    .grid-cell video { width: 100%; height: 100%; object-fit: cover; }
+    .grid-cell .channel-info { position: absolute; bottom: 0; left: 0; right: 0; padding: 8px; background: linear-gradient(transparent, var(--bg)); }
+    .grid-cell .channel-name { font-size: 0.65rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .grid-cell .channel-status { font-size: 0.5rem; }
+    .grid-cell .status-working { color: var(--neon-cyan); }
+    .grid-cell .status-dead { color: var(--neon-magenta); }
+    .grid-cell .status-unknown { color: var(--text-secondary); }
+    .empty { text-align: center; color: var(--text-secondary); padding: 40px; }
+    
+    /* Multi-select mode */
+    .multi-select-mode .grid-cell { border: 2px solid var(--neon-cyan); }
+    .multi-select-mode .channel-name { user-select: none; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <span class="logo">IPTV PLAYER</span>
+    <div class="search-wrapper">
+      <span class="icon">⌕</span>
+      <input type="text" id="search" placeholder="Search channels..." autocomplete="off" />
+    </div>
+    <div class="filter-pills">
+      <button class="filter-pill active" data-view="quad" onclick="setView('quad')">Quad</button>
+      <button class="filter-pill" data-view="single" onclick="setView('single')">Single</button>
+      <button class="filter-pill" data-view="favorites" onclick="setView('favorites')">Favorites</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="multi-view" id="multiView" class="cell-4">
+      <!-- Grid cells rendered by JS -->
+    </div>
+    <div class="empty" id="empty">Select channels to display in grid</div>
+  </main>
+
+  <script>
+    // Multi-view / quad display logic
+    let currentView = 'quad'; // 'quad', 'single', 'favorites'
+    let selectedChannels = []; // Channels selected for multi-view display
+    
+    // Example channel data
+    const allChannels = [
+      { id: '1', name: 'ABC News', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '2', name: 'ESPN', status: 'working', categories: ['sports'], tvgId: '' },
+      { id: '3', name: 'CNN', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '4', name: 'BBC World', status: 'working', categories: ['news'], tvgId: '' },
+      { id: '5', name: 'Fox Sports', status: 'working', categories: ['sports'], tvgId: '' },
+      { id: '6', name: 'BBC America', status: 'dead', categories: ['entertainment'], tvgId: '' },
+      { id: '7', name: 'CNN International', status: 'unknown', categories: ['news'], tvgId: '' },
+      { id: '8', name: 'HBO', status: 'working', categories: ['movies'], tvgId: '' }
+    ];
+    
+    const grid = document.getElementById('multiView');
+    const empty = document.getElementById('empty');
+    
+    // View modes
+    function setView(view) {
+      currentView = view;
+      document.querySelectorAll('.filter-pill').forEach(b => b.classList.remove('active'));
+      event.target.classList.add('active');
+      
+      // Select appropriate channels for this view
+      let channelsToShow;
+      if (view === 'favorites') {
+        // In real app, filter by favorites
+        channelsToShow = allChannels.filter(c => c.status === 'working').slice(0, 4);
+      } else if (view === 'single') {
+        channelsToShow = [allChannels[0]];
+      } else {
+        // quad view - select up to 4 channels
+        channelsToShow = allChannels.slice(0, 4);
+      }
+      
+      selectedChannels = channelsToShow;
+      renderGrid(channelsToShow);
+    }
+    
+    // Render grid based on cell size
+    function renderGrid(channels) {
+      grid.innerHTML = '';
+      if (!channels || channels.length === 0) {
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      
+      // Determine grid cells based on number of channels and current view
+      const cellCount = Math.min(channels.length, 4); // Max 4 for quad view
+      const cellClass = `cell-${cellCount}`;
+      
+      grid.setAttribute('class', `multi-view ${cellClass}`);
+      
+      channels.forEach((channel, index) => {
+        const statusLabels = { working: '🟢', dead: '🔴', unknown: '⚪' };
+        const cell = document.createElement('div');
+        cell.className = 'grid-cell';
+        
+        // Create video element
+        const video = document.createElement('video');
+        video.setAttribute('controls', '');
+        video.setAttribute('playsinline', '');
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.style.objectFit = 'cover';
+        
+        // Create channel info div
+        const channelInfo = document.createElement('div');
+        channelInfo.className = 'channel-info';
+        channelInfo.innerHTML = `
+          <div class="channel-name">${channel.name}</div>
+          <div class="channel-status status-${channel.status}">${statusLabels[channel.status] || '⚪'}</div>
+        `;
+        
+        cell.appendChild(video);
+        cell.appendChild(channelInfo);
+        
+        // In a real app, would set video.src from the channel's stream URL
+        // For demo, just show placeholder
+        video.placeholder = 'Stream placeholder';
+        
+        grid.appendChild(cell);
+      });
+    }
+    
+    // Initial render - quad view
+    setView('quad');
+    
+    // Click to select/deselect for multi-view
+    grid.addEventListener('click', (e) => {
+      const cell = e.target.closest('.grid-cell');
+      if (!cell) return;
+      
+      const index = Array.from(grid.children).indexOf(cell);
+      if (index === -1) return;
+      
+      const channel = selectedChannels[index];
+      if (channel) {
+        // Deselect
+        selectedChannels.splice(index, 1);
+        cell.classList.remove('selected');
+      } else {
+        // Select
+        selectedChannels[index] = allChannels[index];
+        cell.classList.add('selected');
+      }
+      
+      // Redraw with selected channels
+      renderGrid(selectedChannels);
+    });
+  </script>
+</body>
+</html>
