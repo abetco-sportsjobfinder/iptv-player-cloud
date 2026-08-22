@@ -17,9 +17,34 @@
 <body>
 
 <div id="boot" class="boot">
-  <div class="boot-mark">◇ PRISM TV</div>
-  <div id="bootMsg">Loading…</div>
+  <div class="prism-loader">
+    <div class="pl-diamond"><span></span></div>
+    <div class="boot-mark">◇ PRISM TV</div>
+    <div id="bootMsg">Initializing…</div>
+    <div class="pl-bar"><i></i></div>
+    <div class="pl-dots"><span>•</span><span>•</span><span>•</span><span>•</span></div>
+  </div>
 </div>
+<!-- boot loader by ses_fd7f96d0 - see COORDINATION.md staging protocol before git add -->
+<script>
+(function(){
+  var b = document.getElementById('boot');
+  if (!b || b.dataset.loaderBound) return;
+  b.dataset.loaderBound = '1';
+  var done = false;
+  function finish(){
+    if (done) return;
+    done = true;
+    b.classList.add('done');
+    var ms = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420;
+    setTimeout(function(){ b.remove(); }, ms);
+  }
+  b.remove = finish; /* path A: main.js calls .remove() */
+  new MutationObserver(function(){ /* path B: degrade silently if owner stops using .remove() */
+    if (!done && (getComputedStyle(b).display === 'none' || !b.isConnected)) done = true;
+  }).observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style','class']});
+})();
+</script>
 
 <header class="topbar">
   <button id="sidebarToggle" class="icon-btn" aria-label="Toggle sidebar">☰</button>

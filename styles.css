@@ -330,3 +330,23 @@ body.nav-collapsed .sidebar { display: none; }
   .hero h2 { font-size: 1.4rem; }
   .mv-tile { width: 220px; }
 }
+
+/* ---------- boot loader ---------- */
+.prism-loader{display:flex;flex-direction:column;align-items:center;gap:18px}
+.pl-diamond{width:26px;height:26px;border:2px solid var(--accent);transform:rotate(45deg);position:relative;box-shadow:0 0 24px var(--accent);animation:pl-spin 2.2s linear infinite}
+.pl-diamond span{position:absolute;inset:6px;background:linear-gradient(135deg,var(--accent),transparent 70%);opacity:.85;animation:pl-pulse 1.4s ease-in-out infinite}
+@keyframes pl-spin{to{transform:rotate(405deg)}}
+@keyframes pl-pulse{0%,100%{opacity:.15}50%{opacity:.85}}
+.boot-mark{letter-spacing:.35em;font-weight:800;animation:pl-track 3s ease-in-out infinite}
+@keyframes pl-track{0%,100%{letter-spacing:.35em}50%{letter-spacing:.5em}}
+.pl-bar{width:230px;height:4px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;position:relative}
+.pl-bar i{position:absolute;top:0;left:0;width:38%;height:100%;border-radius:99px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:pl-slide 1.3s cubic-bezier(.4,0,.2,1) infinite}
+@keyframes pl-slide{from{left:-40%}to{left:110%}}
+.pl-dots{display:flex;gap:8px}
+.pl-dots span{color:var(--accent);animation:pl-bounce 1.2s ease-in-out infinite;font-size:.9rem;line-height:1}
+.pl-dots span:nth-child(2){animation-delay:.15s}
+.pl-dots span:nth-child(3){animation-delay:.3s}
+.pl-dots span:nth-child(4){animation-delay:.45s}
+@keyframes pl-bounce{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
+#boot.done{opacity:0;transform:scale(.96);transition:opacity .4s ease,transform .4s ease}
+@media (prefers-reduced-motion: reduce){.pl-diamond,.pl-diamond span,.pl-bar i,.pl-dots span,.boot-mark{animation:none!important}#boot.done{transition:none!important}}
