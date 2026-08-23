@@ -73,6 +73,8 @@ export function parseHash() {
   if (head === 'f') return { view: 'special', special: 'fav' };
   if (head === 'r') return { view: 'special', special: 'recent' };
   if (head === 'p' && a) return { view: 'provider', provider: a, category: b || 'all' };
+  if (head === 'c' && a) return { view: 'country', country: a.toLowerCase() };
+  if (head === 'g' && a) return { view: 'genre', genre: a };
   if (head === 'L' && a && b) return { view: 'brand', letter: a, brandKey: b };
   if (head === 'L' && a) return { view: 'letter', letter: a };
   return { view: 'root' };

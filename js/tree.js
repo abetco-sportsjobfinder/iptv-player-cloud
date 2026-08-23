@@ -74,6 +74,16 @@ export function matchesCategory(c, chip) {
   return c.categories.some(cat => cat.toLowerCase() === q);
 }
 
+// Shared: first known chip-category for a channel, else 'general'.
+export function primaryCategoryKeyFor(c) {
+  const chips = CATEGORY_CHIPS.filter(([k]) => k !== 'all');
+  for (const cat of (c.categories || [])) {
+    const hit = chips.find(([k]) => k.toLowerCase() === String(cat).toLowerCase());
+    if (hit) return hit[0];
+  }
+  return 'general';
+}
+
 export function flag(code) {
   if (!code || code.length !== 2) return '';
   const A = code.toUpperCase().charCodeAt(0), B = code.toUpperCase().charCodeAt(1);

@@ -7,6 +7,7 @@ import {
   state, patch, onStateChange, parseHash, toggleExpanded, toggleFavorite, esc, navigate,
 } from './state.js';
 import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag } from './tree.js';
+import { buildUncategorizedClusters } from './clustering.js';
 import { getStatus, getStatusReason, initTracking, testStream } from './tracking.js';
 import { play, stopPlayback, primeStatus } from './player.js';
 import { addToMultiView, clearMultiView, tileCount } from './multiview.js';
@@ -264,6 +265,8 @@ function channelsForRoute(route) {
       return list;
     }
     case 'letter': return db.channels.filter(c => c.brand && letterFor(c.brand) === route.letter);
+    case 'country': return db.channels.filter(c => (c.country || '').toLowerCase() === route.country);
+    case 'genre': return db.channels.filter(c => matchesCategory(c, route.genre));
     case 'brand': return (TREE?.get(route.letter)?.get(route.brandKey)) || [];
     default: return db.channels;
   }
@@ -370,6 +373,14 @@ function scopeTitle(route) {
     const cat = route.category && route.category !== 'all' ? ' — ' + categoryDisplayName(route.category) : '';
     return `${decodeURIComponent(route.provider)}${cat}`;
   }
+  if (route.view === 'country') {
+    const code = route.country.toUpperCase();
+    return `${flag(code)} ${code}`;
+  }
+  if (route.view === 'genre') {
+    const hit = CATEGORY_CHIPS.find(([k]) => k === route.genre);
+    return '🎭 ' + (hit ? hit[1] : decodeURIComponent(route.genre));
+  }
   if (route.view === 'brand') return `${route.letter}`;
   if (route.view === 'letter') return `Letter ${route.letter}`;
   return 'Browse All';
@@ -459,19 +470,72 @@ function renderSidebar() {
   parts.push(specialRow('f', 'Favorites'));
   parts.push(specialRow('r', 'Recently Watched'));
 
-  parts.push(`<div class="tree-section-label">Providers</div><div id="providerGroups">`);
-  const sortedProviders = [...providers.entries()].sort((a, b) =>
-    b[1].length - a[1].length || a[0].localeCompare(b[0]));
-  for (const [prov, chans] of sortedProviders) {
+  // ===== Browse by Country (top 60) =====
+  if (db.channels.length) {
+    const cc = new Map();
+    for (const c of db.channels) {
+      const k = (c.country || '').toLowerCase();
+      if (k.length === 2) cc.set(k, (cc.get(k) || 0) + 1);
+    }
+    parts.push(`<div class="tree-section-label">🌍 Countries</div><div id="countryGroups">`);
+    for (const [code, n] of [...cc.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)) {
+      const active = state.route.view === 'country' && state.route.country === code;
+      parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/c/${esc(code)}">${flag(code)} ${esc(code.toUpperCase())}</a><span class="count">${n.toLocaleString()}</span></div>`);
+    }
+    parts.push(`</div>`);
+  }
+
+  // ===== Browse by Genre =====
+  parts.push(`<div class="tree-section-label">🎭 Genres</div><div id="genreGroups">`);
+  for (const [key, label] of CATEGORY_CHIPS.filter(([k]) => k !== 'all')) {
+    const n = db.channels.filter(c => matchesCategory(c, key)).length;
+    const active = state.route.view === 'genre' && state.route.genre === key;
+    parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/g/${esc(key)}">${esc(label)}</a><span class="count">${n.toLocaleString()}</span></div>`);
+  }
+  parts.push(`</div>`);
+
+  parts.push(`<div class="tree-section-label">📡 Providers</div><div id="providerGroups">`);
+  const UNC = 'uncategorized';
+  const realProviders = sortedProviders.filter(([p]) => p.toLowerCase() !== UNC);
+  const uncEntry = sortedProviders.find(([p]) => p.toLowerCase() === UNC);
+  for (const [prov, chans] of [...realProviders, ...(uncEntry ? [uncEntry] : [])]) {
+    const isUnc = prov.toLowerCase() === UNC;
     const key = 'P:' + prov;
     const isOpen = state.expanded.has(key);
     parts.push(`
       <div class="tree-row">
         <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
-        <a class="tree-link" href="#/p/${encodeURIComponent(prov)}">${esc(prov)}</a>
+        <a class="tree-link" href="#/p/${encodeURIComponent(prov)}">${esc(isUnc ? 'Uncategorized (no provider)' : prov)}</a>
         <span class="count">${chans.length.toLocaleString()}</span>
       </div>`);
     if (!isOpen) continue;
+
+    if (isUnc) {
+      // Clustered submenus instead of an ocean of count-1 rows.
+      let clusters;
+      try { clusters = buildUncategorizedClusters(chans); } catch (e) { clusters = []; }
+      parts.push(`<div class="tree-brands">`);
+      for (const cl of clusters.slice(0, 40)) {
+        const ckey = key + '|C:' + cl.label;
+        const cOpen = state.expanded.has(ckey);
+        parts.push(`
+          <div class="tree-row sub">
+            <button class="tw" data-toggle="${esc(ckey)}" aria-expanded="${cOpen}">${cOpen ? '\u25BE' : '\u25B8'}</button>
+            <span class="tree-link">${esc(cl.label)}</span>
+            <span class="count">${cl.chans.length.toLocaleString()}</span>
+          </div>`);
+        if (!cOpen) continue;
+        const shown = cl.chans.slice(0, 100);
+        parts.push(`<div class="tree-channels">`);
+        parts.push(shown.map(c => `<a class="tree-channel" data-watch="${esc(c.id)}">${esc(c.name)}</a>`).join(''));
+        if (cl.chans.length > shown.length) {
+          parts.push(`<div class="count" style="padding:4px 12px">+${(cl.chans.length - shown.length).toLocaleString()} more…</div>`);
+        }
+        parts.push(`</div>`);
+      }
+      parts.push(`</div>`);
+      continue;
+    }
 
     // Category sub-groups inside this provider
     const cats = new Map();
@@ -489,7 +553,7 @@ function renderSidebar() {
       parts.push(`
         <div class="tree-row sub">
           <button class="tw" data-toggle="${esc(ckey)}" aria-expanded="${cOpen}">${cOpen ? '\u25BE' : '\u25B8'}</button>
-          <span class="tree-link">${esc(categoryDisplayName(catKey))}</span>
+          <a class="tree-link" href="#/p/${encodeURIComponent(prov)}/${encodeURIComponent(catKey)}">${esc(categoryDisplayName(catKey))}</a>
           <span class="count">${list.length.toLocaleString()}</span>
         </div>`);
       if (!cOpen) continue;
@@ -587,8 +651,15 @@ function populateCountryFilter() {
 function renderChips() {
   const el = document.getElementById('chips');
   if (!el) return;
+  // Precompute genre counts once per data-load for hover tooltips.
+  if (!window._genreCounts) {
+    window._genreCounts = {};
+    for (const [key] of CATEGORY_CHIPS) {
+      window._genreCounts[key] = key === 'all' ? db.channels.length : db.channels.filter(c => matchesCategory(c, key)).length;
+    }
+  }
   el.innerHTML = CATEGORY_CHIPS.map(([key, label]) =>
-    `<button class="chip${(state.category === key && !state.query.trim()) ? ' on' : ''}" data-chip="${esc(key)}">${esc(label)}</button>`
+    `<button class="chip${(state.category === key && !state.query.trim()) ? ' on' : ''}" data-chip="${esc(key)}" title="${((window._genreCounts[key] || 0)).toLocaleString()} channels" aria-pressed="${state.category === key && !state.query.trim()}">${esc(label)}</button>`
   ).join('');
   el.querySelectorAll('[data-chip]').forEach(btn => {
     btn.addEventListener('click', () => {
