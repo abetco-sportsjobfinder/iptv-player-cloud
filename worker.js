@@ -13,7 +13,7 @@ function withCors(headers, request) {
     h.set('Access-Control-Allow-Origin', origin);
     h.set('Vary', 'Origin');
   }
-  h.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  h.set('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Range, Origin, Referer, User-Agent, X-Device-Id');
   return h;
 }
@@ -135,6 +135,14 @@ export default {
     const url = new URL(request.url);
     console.log('[proxy] method=%s path=%s', request.method, url.pathname);
 
+    // CORS preflight MUST be answered before any route matching — otherwise
+    // OPTIONS falls into a route's method-not-allowed (405, no ACAO) and the
+    // browser aborts the real request. This bug silently killed every
+    // favorites/status/telemetry write from the browser.
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: withCors(null, request) });
+    }
+
     // 0) Stream status log. With X-Device-Id: device-scoped key (legacy fallback on read).
     if (url.pathname === '/api/status') {
       const dev = getDeviceId(request);
@@ -235,11 +243,7 @@ export default {
       return new Response(null, { status: 101 });
     }
 
-    // 1) Preflight must be answered BEFORE any upstream fetch.
-    if (request.method === 'OPTIONS') {
-      console.log('[proxy] OPTIONS preflight -> 204');
-      return new Response(null, { status: 204, headers: withCors(null, request) });
-    }
+    // (Preflight is handled at the top of fetch() — see note there.)
 
     const target = url.searchParams.get('u');
     if (!target) {

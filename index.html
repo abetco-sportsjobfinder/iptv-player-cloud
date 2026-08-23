@@ -23,8 +23,9 @@
         stack:String((e.error&&e.error.stack)||'').slice(0,1000),t:Date.now(),
         ua:navigator.userAgent.slice(0,150)};
       window.__errs.push(payload);
+      // text/plain = CORS-simple request: no preflight, works even if worker CORS hiccups.
       fetch('https://iptv-stream-proxy.abetscrape.workers.dev/api/client-error',
-        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(function(){});
+        {method:'PUT',headers:{'Content-Type':'text/plain'},body:JSON.stringify(payload)}).catch(function(){});
     }catch(_){}
   }
   window.addEventListener('error',report);
@@ -54,7 +55,7 @@ document.addEventListener('DOMContentLoaded', function(){
 document.addEventListener('click', function(e){
   try{
     fetch('https://iptv-stream-proxy.abetscrape.workers.dev/api/client-error',{
-      method:'PUT',headers:{'Content-Type':'application/json'},
+      method:'PUT',headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({msg:'CLICK target='+(e.target.tagName)+' class='+(e.target.className||'').toString().slice(0,40),line:0,ua:'clickbeacon'})
     }).catch(function(){});
   }catch(_){}
