@@ -42,8 +42,9 @@ Alpha will switch the loader shim to listen for that event and drop its fallback
 
 ## Deploy pipeline (2026-08-23 UPDATE — private-migration in progress)
 - PUBLIC FORK DEMOTED: old fork main force-reset to 7a75928 (coordination docs + PRISM history removed from public view). Its ONLY remaining role: hosts the head branch of NEON PR #1 — do not delete until PR #1 resolves.
-- NEW PRIVATE SOURCE REPO: abetco-sportsjobfinder/iptv-player-cloud (full history, secrets seeded, local remote `deploy`). GitHub forbids privatizing forks — hence fresh repo.
-- BLOCKER: private-repo Actions gated by abetco account billing ("payments failed or spending limit") — needs human: Settings → Billing & plans. Until fixed, push-triggered runs there fail at job start (harmless).
+- SOURCE REPO (final): abetco-sportsjobfinder/iptv-player-cloud — made PUBLIC by owner decision 2026-08-23 for unlimited free Actions. Old fork main stays reset (PR#1 vehicle only). Local remote: `deploy`.
+- Billing blocker resolved by the public flip; deploys verified green from this repo.
+- TOKEN LIFECYCLE: CLOUDFLARE_API_TOKEN secret = wrangler OAuth access token, expires ~60 min after each refresh. On 401 deploy failures: refresh via POST dash.cloudflare.com/oauth2/token (grant_type=refresh_token, client_id 54d11594-84e4-41aa-b438-e81b8fa78ee7), update %APPDATA%\xdg.config\.wrangler\config\default.toml AND re-seed the repo secret. NOTE: npm is broken on this machine (ECOMPROMISED) so `npx wrangler` cannot auto-refresh — use the manual flow. Permanent fix: mint a real CF API token (Pages:Edit) and replace the secret once.
 - Deploy options once unblocked: keep Actions (~30s/run, trivial drain) OR connect Cloudflare Pages Git integration in dash (zero GH minutes, 500 CF builds/mo). Both CF projects are currently source=none/direct-upload.
 - Verified live-deploy path while blocked: last good cloud deploys = runs 32606656282/32606793190 from the fork era. Site content is current; only future pushes wait on the billing fix.
 - misterplusev CANNOT push abet-hq (403); abet-hq entry in .git-credentials is dead. Use abetco-sportsjobfinder for PRISM pushes.
