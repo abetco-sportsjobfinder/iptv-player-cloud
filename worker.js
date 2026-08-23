@@ -143,6 +143,16 @@ export default {
       return new Response(null, { status: 204, headers: withCors(null, request) });
     }
 
+    // Health check for uptime monitors (enterprise audit P3-G).
+    if (url.pathname === '/health' && request.method === 'GET') {
+      let kv = 'up';
+      try { await env.STATUS.get('probe:lastRun'); } catch (e) { kv = 'down'; }
+      return new Response(JSON.stringify({ ok: kv === 'up', kv, ts: Date.now() }), {
+        status: 200,
+        headers: withCors({ 'Content-Type': 'application/json' }, request),
+      });
+    }
+
     // 0) Stream status log. With X-Device-Id: device-scoped key (legacy fallback on read).
     if (url.pathname === '/api/status') {
       const dev = getDeviceId(request);
@@ -201,7 +211,7 @@ export default {
       const payload = await getShortlist(env);
       return new Response(payload, {
         status: 200,
-        headers: withCors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, request),
+        headers: withCors({ 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' }, request),
       });
     }
 
@@ -252,6 +262,23 @@ export default {
         status: 400,
         headers: withCors({ 'Content-Type': 'text/plain' }, request),
       });
+    }
+
+    // SSRF guard (enterprise audit P0-A): block non-http(s) schemes and
+    // private/link-local/metadata targets. Public IPTV hosts remain reachable.
+    try {
+      const tu = new URL(target);
+      if (!/^https?:$/.test(tu.protocol)) throw new Error('scheme');
+      const h = tu.hostname;
+      const privateHost =
+        /^(localhost|127\.|0\.|10\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(h) ||
+        /^\[?(::1|fc|fd)/i.test(h) ||
+        /\.(internal|local)$/i.test(h);
+      if (privateHost) {
+        return new Response('Blocked target', { status: 403, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+      }
+    } catch (e) {
+      return new Response('Invalid u parameter', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
     }
     console.log('[proxy] target=%s', target);
 

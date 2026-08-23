@@ -110,3 +110,9 @@ USER RECOVERY PROTOCOL: two consecutive hard refreshes (Ctrl+Shift+R x2). First 
 - Sidebar order: Library -> Countries(top60) -> Genres(11 w/ live counts) -> Providers(real desc, Uncategorized LAST) -> A-Z (brands by count desc)
 - Uncategorized expanded = clustered submenus (prefix-token >=5, Category-Misc >=5, Country+Category >=10, Other) via js/clustering.js
 - Chips: hover counts, aria-pressed, click+render beacons for remote diagnosis of 'pills do nothing' report
+
+## ADDENDUM 2026-08-24T0545Z - ENTERPRISE AUDIT (V4) + P0 quick-wins applied
+Artifact: NVIDIA_DEEPSEEKV4_enterprise-audit_2026-08-23T2301Z.md (30+ findings P0-P4, exec verdict: NOT commercializable until SSRF/legal/rate-limit P0s land; viable free product in ~30 days per its plan).
+Applied immediately: click/render beacons REMOVED (KV write amplification + GDPR risk); error-trap kept (errors only); SSRF guard in proxy (private/link-local/metadata + non-http(s) -> 403); /health endpoint (kv status); shortlist Cache-Control max-age=60.
+Backlog adopted (30-day plan weeks 1-4 in artifact): rate limiting, DMCA/ToS/Privacy pages, geo-consent decision, JSON validation 400s, playlist rewrite edge cases (EXT-X-MAP/KEY), dedup + status decay, sidebar memoization/virtualization, a11y pass (focus traps, contrast, touch targets 44px), structured logging, favorites export/import.
+NOTE: permanent CF API token still required (OAuth refresh dance every ~60min continues).

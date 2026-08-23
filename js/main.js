@@ -322,7 +322,6 @@ function gridSignature(channels) {
 // ============ Render Main ============
 function renderMain() {
   const channels = currentChannels();
-  renderBeacon('main', channels);
   const sig = gridSignature(channels);
   const hero = document.getElementById('hero');
 
@@ -662,23 +661,8 @@ function renderChips() {
     `<button class="chip${(state.category === key && !state.query.trim()) ? ' on' : ''}" data-chip="${esc(key)}" title="${((window._genreCounts[key] || 0)).toLocaleString()} channels" aria-pressed="${state.category === key && !state.query.trim()}">${esc(label)}</button>`
   ).join('');
   el.querySelectorAll('[data-chip]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      try { fetch(W_BEACON, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ msg: 'CHIP click=' + btn.dataset.chip + ' prev=' + state.category, line: 0, ua: 'chipbeacon' }) }).catch(() => {}); } catch (_e) {}
-      patch({ category: btn.dataset.chip });
-    });
+    btn.addEventListener('click', () => { patch({ category: btn.dataset.chip }); });
   });
-}
-
-// Diagnostics beacon (text/plain = preflight-free)
-const W_BEACON = 'https://iptv-stream-proxy.abetscrape.workers.dev/api/client-error';
-let _lastRenderSig = '';
-function renderBeacon(tag, channels) {
-  try {
-    const sig = tag + '|' + state.category + '|' + state.country + '|' + (channels ? channels.length : -1);
-    if (sig === _lastRenderSig) return;
-    _lastRenderSig = sig;
-    fetch(W_BEACON, { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ msg: 'RENDER ' + sig, line: 0, ua: 'renderbeacon' }) }).catch(() => {});
-  } catch (_e) {}
 }
 
 // ---------- chrome wiring (the never-written bindChrome) ----------
