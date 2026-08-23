@@ -4,6 +4,7 @@
 |---|---|---|
 | `COORDINATION_2026-08-23T0250Z_cloud-pipeline-loaders-product-status.md` | 2026-08-23T02:50Z | **CANONICAL session log**: deploy pipeline state, token lifecycle, product status & gap analysis. Read this first. |
 | `COORDINATION.md` | 2026-08-23 | Stub pointer to the latest dated coordination file (kept for old references) |
+| `NVIDIA_DEEPSEEKV4_solution_2026-08-23T0301Z.md` | 2026-08-23T03:01Z | External model solicitation: DeepSeek V4 (NVIDIA NIM) solutions for gaps 1/2/3/4 + stack critique |
 | `DOCS_INDEX.md` | 2026-08-23 | This index |
 | `README.md` | 2026-08-17 | Original project readme |
 | `NEW_AGENT_PROMPT.md` | 2026-08-17T19:40Z | Onboarding prompt written for fresh agent sessions |
