@@ -1,8 +1,18 @@
 // Ensure every response — success, error, preflight, or missing-param —
 // carries CORS headers, or the browser blocks it before reading the body.
-function withCors(headers) {
+function withCors(headers, request) {
   const h = new Headers(headers || {});
-  h.set('Access-Control-Allow-Origin', '*');
+  // Restrict credentialed reads/writes to our own frontends; non-browser
+  // clients (curl, workers) don't need CORS headers at all.
+  const ALLOWED_ORIGINS = [
+    'https://iptv-player-pro.pages.dev',
+    'https://iptv-player-20g.pages.dev',
+  ];
+  const origin = request && request.headers.get('Origin');
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    h.set('Access-Control-Allow-Origin', origin);
+    h.set('Vary', 'Origin');
+  }
   h.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Range, Origin, Referer, User-Agent, X-Device-Id');
   return h;
@@ -17,8 +27,10 @@ function getDeviceId(request) {
 
 // ---------- P0-B: nightly shortlist builder ----------
 const STREAMS_URL = 'https://iptv-org.github.io/api/streams.json';
-const SAMPLE_SIZE = 40;
+const SAMPLE_SIZE = 30;
 const STALE_MS = 23 * 60 * 60 * 1000;
+const BUILD_COOLDOWN_MS = 30 * 60 * 1000;
+const MAX_BODY_BYTES = 64 * 1024;
 
 async function fetchJson(url, opts) {
   const r = await fetch(url, opts);
@@ -28,7 +40,7 @@ async function fetchJson(url, opts) {
 
 // Date-seeded deterministic sample so coverage rotates predictably day to day.
 function seededSample(streams, n, seed) {
-  let s = seed >>> 0;
+  let s = (Math.imul(seed, 2654435761) >>> 0) || 1;
   const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
   const arr = streams.slice();
   for (let i = arr.length - 1; i > 0; i--) {
@@ -43,17 +55,19 @@ async function probeChannel(stream) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 8000);
   try {
+    // redirect:'manual' — each followed redirect costs a subrequest against
+    // the free-tier cap; a 3xx origin is treated as not-confirmed.
     const resp = await fetch(stream.url, {
       method: 'GET',
       headers: { 'Range': 'bytes=0-2048', 'User-Agent': 'prism-probe/1.0' },
       signal: ac.signal,
-      redirect: 'follow',
+      redirect: 'manual',
     });
-    try { await resp.body?.cancel(); } catch {}
+    resp.body?.cancel();
     clearTimeout(timer);
     const ct = resp.headers.get('content-type') || '';
-    const ok = resp.status >= 200 && resp.status < 400 &&
-      (/mpegurl|video|mp2t|mp4|octet-stream/i.test(ct) || resp.status === 206 || !ct);
+    const ok = (resp.status === 206 ||
+      (resp.status >= 200 && resp.status < 300 && /mpegurl|video|mp2t|mp4/i.test(ct)));
     return { id: stream.channel, url: stream.url, ok, latency: Date.now() - t0 };
   } catch (e) {
     clearTimeout(timer);
@@ -97,14 +111,21 @@ async function getShortlist(env) {
   }
   let lastRun = 0;
   try { lastRun = (JSON.parse(await env.STATUS.get('probe:lastRun')) || {}).ts || 0; } catch (e) {}
-  // Guard against write storms: rebuild at most once per stale window globally.
-  if (Date.now() - lastRun < STALE_MS) {
+  // Cooldown = stale window minus safety buffer; KV is eventually consistent
+  // across PoPs so the building-flag TTL below carries the real lock duty.
+  if (Date.now() - lastRun < STALE_MS - BUILD_COOLDOWN_MS) {
     return cur || JSON.stringify({ ts: null, channels: [], note: 'build in progress' });
   }
+  const building = await env.STATUS.get('probe:building');
+  if (building) return cur || JSON.stringify({ ts: null, channels: [], note: 'build in progress' });
+  await env.STATUS.put('probe:building', '1', { expirationTtl: 300 });
   await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: Date.now(), count: 0 }));
   try {
-    return await buildShortlist(env);
+    const built = await buildShortlist(env);
+    await env.STATUS.delete('probe:building');
+    return built;
   } catch (e) {
+    await env.STATUS.delete('probe:building');
     return cur || JSON.stringify({ ts: null, channels: [], error: e.message });
   }
 }
@@ -121,21 +142,24 @@ export default {
       if (request.method === 'GET') {
         let val = {};
         try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
-        if (dev && val && !Object.keys(val).length) {
-          try { val = await env.STATUS.get('status', 'json') || {}; } catch (e) {}
-        }
+        // No legacy fallback for named devices: a fresh device must not see
+        // other visitors' data. Only headerless (legacy) clients share state.
         return new Response(JSON.stringify(val), {
           status: 200,
-          headers: withCors({ 'Content-Type': 'application/json' }),
+          headers: withCors({ 'Content-Type': 'application/json' }, request),
         });
       }
       if (request.method === 'PUT') {
+        const raw = await request.text();
+        if (raw.length > MAX_BODY_BYTES) {
+          return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
         let body = {};
-        try { body = await request.json(); } catch (e) { }
-        await env.STATUS.put(key, JSON.stringify(body));
-        return new Response('ok', { status: 200, headers: withCors() });
+        try { body = JSON.parse(raw); } catch (e) { }
+        await env.STATUS.put(key, raw);
+        return new Response('ok', { status: 200, headers: withCors(null, request) });
       }
-      return new Response('method not allowed', { status: 405, headers: withCors() });
+      return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
     }
 
     // 2) Favorites cache. Device-scoped when X-Device-Id present; legacy shared otherwise.
@@ -145,21 +169,23 @@ export default {
       if (request.method === 'GET') {
         let val = {};
         try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
-        if (dev && val && !Object.keys(val).length) {
-          try { val = await env.STATUS.get('favorites', 'json') || {}; } catch (e) {}
-        }
+        // Same privacy rule as /api/status above.
         return new Response(JSON.stringify(val), {
           status: 200,
-          headers: withCors({ 'Content-Type': 'application/json' }),
+          headers: withCors({ 'Content-Type': 'application/json' }, request),
         });
       }
       if (request.method === 'PUT') {
+        const raw = await request.text();
+        if (raw.length > MAX_BODY_BYTES) {
+          return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
         let body = {};
-        try { body = await request.json(); } catch (e) { }
-        await env.STATUS.put(key, JSON.stringify(body));
-        return new Response('ok', { status: 200, headers: withCors() });
+        try { body = JSON.parse(raw); } catch (e) { }
+        await env.STATUS.put(key, raw);
+        return new Response('ok', { status: 200, headers: withCors(null, request) });
       }
-      return new Response('method not allowed', { status: 405, headers: withCors() });
+      return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
     }
 
     // 2b) Nightly-probed "confirmed working" shortlist (P0-B). Rebuilds lazily when stale.
@@ -167,7 +193,7 @@ export default {
       const payload = await getShortlist(env);
       return new Response(payload, {
         status: 200,
-        headers: withCors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }),
+        headers: withCors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, request),
       });
     }
 
@@ -188,7 +214,7 @@ export default {
     // 1) Preflight must be answered BEFORE any upstream fetch.
     if (request.method === 'OPTIONS') {
       console.log('[proxy] OPTIONS preflight -> 204');
-      return new Response(null, { status: 204, headers: withCors() });
+      return new Response(null, { status: 204, headers: withCors(null, request) });
     }
 
     const target = url.searchParams.get('u');
@@ -196,7 +222,7 @@ export default {
       console.log('[proxy] missing u param -> 400');
       return new Response('Missing u parameter', {
         status: 400,
-        headers: withCors({ 'Content-Type': 'text/plain' }),
+        headers: withCors({ 'Content-Type': 'text/plain' }, request),
       });
     }
     console.log('[proxy] target=%s', target);
@@ -241,24 +267,31 @@ export default {
           body = text;
         }
         headers.set('Content-Type', 'application/vnd.apple.mpegurl');
-        return new Response(body, { status: resp.status, headers: withCors(headers) });
+        return new Response(body, { status: resp.status, headers: withCors(headers, request) });
       }
 
-      return new Response(resp.body, { status: resp.status, headers: withCors(headers) });
+      return new Response(resp.body, { status: resp.status, headers: withCors(headers, request) });
     } catch (e) {
       // Upstream fetch failed (blocked port, network, timeout). The 502 MUST
       // still carry ACAO, or the browser throws a CORS error and hides the body.
       console.log('[proxy] upstream fetch error: %s', e.message);
       return new Response('Proxy error: ' + e.message, {
         status: 502,
-        headers: withCors({ 'Content-Type': 'text/plain' }),
+        headers: withCors({ 'Content-Type': 'text/plain' }, request),
       });
     }
   },
 
   // P0-B: nightly 03:00 UTC probe run (wrangler.toml [triggers]).
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(buildShortlist(env).catch(e => console.log('[cron] shortlist build failed:', e.message)));
+    ctx.waitUntil((async () => {
+      try {
+        const last = await env.STATUS.get('probe:lastRun');
+        const ts = last ? (JSON.parse(last).ts || 0) : 0;
+        if (Date.now() - ts < STALE_MS - BUILD_COOLDOWN_MS) return; // lazy rebuild already covered it
+      } catch (e) {}
+      await buildShortlist(env).catch(e => console.log('[cron] shortlist build failed:', e.message));
+    })());
   }
 };
 

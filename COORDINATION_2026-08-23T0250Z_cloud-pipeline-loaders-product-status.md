@@ -85,3 +85,8 @@ NEXT (ranked): human playback test on 2 devices -> fix what breaks; per-client s
 - KV budget: ~300 writes/day @50 devices (<1000 cap).
 - Deployed via CF REST API multipart upload (npm is broken on this machine - ECOMPROMISED - wrangler CLI unusable until fixed).
 - NEXT (needs ses_fd96bc97 or override): frontends send X-Device-Id from localStorage UUID + render /shortlist section first (P1 items follow per IMPLEMENTATION_PLAN_2026-08-23T0459Z_p0-p2-roadmap.md).
+
+## ADDENDUM 2026-08-23T0935Z - P0 HARDENED after V4 adversarial review (NVIDIA_DEEPSEEKV4_p0-review_2026-08-23T0922Z.md)
+Applied (verified live): CORS allowlist (only our two pages.dev origins echoed; foreign origins get no ACAO) / legacy-fallback REMOVED for named devices (fresh device sees {}, no cross-user leak) / shortlist rebuild lock via probe:building TTL 300s + 30min cooldown buffer + lastRun check in scheduled() too / probes now redirect:manual + strict content-type (no octet-stream false positives, 3xx = not confirmed) / sample 40->30 (subrequest headroom vs redirect chains) / PUT bodies capped 64KB -> 413 / Knuth-mixed seed.
+Deferred to backlog: HMAC-signed device tokens (needs DEVICE_SECRET), Durable Objects migration if write volume grows.
+Redeployed via CF REST API; full verification suite green on prod.
