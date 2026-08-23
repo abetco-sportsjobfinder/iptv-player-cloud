@@ -71,27 +71,10 @@ function toggleSimpleMode() {
   const btn = document.getElementById('simpleModeBtn');
   if (btn) {
     btn.textContent = simpleMode ? 'Advanced' : 'Simple';
-    btn.title = simpleMode ? 'Switch to Simple Mode' : 'Switch to Advanced Mode';
+    btn.title = simpleMode ? 'Switch to Advanced Mode (providers, categories, A-Z)' : 'Switch to Simple Mode (search + grid only)';
   }
-  
-  // Apply simple mode styling - hide advanced features
-  if (simpleMode) {
-    // In simple mode, show only essential elements
-    document.querySelectorAll('.tree-brands, .category-badges, .more').forEach(el => {
-      el.style.display = 'none';
-    });
-    document.querySelectorAll('.tree-row.sub').forEach(el => {
-      el.style.display = 'none';
-    });
-  } else {
-    // Restore advanced mode display
-    document.querySelectorAll('.tree-brands, .category-badges, .more').forEach(el => {
-      el.style.display = '';
-    });
-    document.querySelectorAll('.tree-row.sub').forEach(el => {
-      el.style.display = '';
-    });
-  }
+  document.body.classList.toggle('simplified', simpleMode);
+  try { localStorage.setItem('prism_simple', simpleMode ? '1' : ''); } catch (e) {}
 }
 
 // ============ Window Management ============
@@ -204,7 +187,9 @@ function applyFilters(channels, filterState) {
     const name = c.name || '';
     const matchesQuery = query ? (name.toLowerCase().includes(query.toLowerCase())) : true;
     const matchesCategory = category === 'all' || (c.categories && c.categories.some(cat => cat.toLowerCase() === category.toLowerCase()));
-    return matchesQuery && matchesCategory;
+    const country = filterState.country || 'all';
+    const matchesCountry = country === 'all' || (c.country || '').toLowerCase() === country.toLowerCase();
+    return matchesQuery && matchesCategory && matchesCountry;
   });
 
   // NEW: Auto-start background testing at end of applyFilters (Bug Fix #8)
@@ -246,10 +231,11 @@ async function boot() {
     await loadAll(msg => setBootMsg(msg));
 
     // NEW: Persist the last filter state in localStorage and restore on load instead of clearing (Bug Fix #6)
-    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all' });
-    patch({ query: savedFilter.query, category: savedFilter.category });
+    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all' });
+    patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all' });
 
     TREE = buildTree(db.channels);
+    populateCountryFilter();
     patch({ route: parseHash(), ready: true });
     document.getElementById('boot')?.remove();
     startBackgroundTesting(); // NEW: Auto-start background testing at end of boot (Bug Fix #8)
@@ -270,6 +256,13 @@ function channelsForRoute(route) {
       if (route.special === 'fav') return db.channels.filter(c => state.favorites.has(c.id));
       if (route.special === 'recent') return state.recent.map(r => db.byId.get(r.id)).filter(Boolean);
       return [];
+    case 'provider': {
+      const list = db.channels.filter(c => (getProviderGroup(c) || 'Other') === route.provider);
+      if (route.category && route.category !== 'all') {
+        return list.filter(c => primaryCategoryKey(c) === route.category);
+      }
+      return list;
+    }
     case 'letter': return db.channels.filter(c => c.brand && letterFor(c.brand) === route.letter);
     case 'brand': return (TREE?.get(route.letter)?.get(route.brandKey)) || [];
     default: return db.channels;
@@ -277,9 +270,10 @@ function channelsForRoute(route) {
 }
 
 function currentChannels() {
-  if (state.query.trim()) return applyFilters(db.channels, { query: state.query.trim(), category: state.category });
+  if (state.query.trim()) return applyFilters(db.channels, { query: state.query.trim(), category: state.category, country: state.country });
   let list = channelsForRoute(state.route);
   if (state.category !== 'all') list = list.filter(c => matchesCategory(c, state.category));
+  if (state.country !== 'all') list = list.filter(c => (c.country || '').toLowerCase() === state.country.toLowerCase());
   return list;
 }
 
@@ -369,8 +363,12 @@ function renderQuadGrid(channels) {
 
 // ============ Scope Title ============
 function scopeTitle(route) {
-  if (state.query.trim()) return `Search: "${state.query.trim}"`;
+  if (state.query.trim()) return `Search: "${state.query.trim()}"`;
   if (route.view === 'special') return { working: 'Working Now', fav: 'Favorites', recent: 'Recently Watched' }[route.special];
+  if (route.view === 'provider') {
+    const cat = route.category && route.category !== 'all' ? ' — ' + categoryDisplayName(route.category) : '';
+    return `${decodeURIComponent(route.provider)}${cat}`;
+  }
   if (route.view === 'brand') return `${route.letter}`;
   if (route.view === 'letter') return `Letter ${route.letter}`;
   return 'Browse All';
@@ -469,7 +467,7 @@ function renderSidebar() {
     parts.push(`
       <div class="tree-row">
         <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
-        <span class="tree-link">${esc(prov)}</span>
+        <a class="tree-link" href="#/p/${encodeURIComponent(prov)}">${esc(prov)}</a>
         <span class="count">${chans.length.toLocaleString()}</span>
       </div>`);
     if (!isOpen) continue;
@@ -508,7 +506,7 @@ function renderSidebar() {
   parts.push(`</div>`);
 
   // ===== A-Z brand browse (secondary) =====
-  parts.push(`<div class="tree-section-label">Channels A\u2013Z</div><div class="tree-letters">`);
+  parts.push(`<div class="tree-section-label az">Channels A\u2013Z</div><div class="tree-letters">`);
   if (TREE) {
     for (const L of sortedLetters(TREE)) {
       const brands = TREE.get(L);
@@ -525,7 +523,8 @@ function renderSidebar() {
         </div>`);
       if (!isOpen) continue;
       parts.push(`<div class="tree-brands">`);
-      for (const [bk, chans] of [...brands.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      for (const [bk, chans] of [...brands.entries()].sort((a, b) =>
+        b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
         const bActive = state.route.view === 'brand' && state.route.letter === L && state.route.brandKey === bk;
         parts.push(`
           <div class="tree-row sub ${bActive ? 'active' : ''}">
@@ -566,6 +565,22 @@ function updateCountsChip() {
   let working = 0;
   for (const c of db.channels) { if (getStatus(c.id) === 'working') working++; }
   chip.textContent = `${working.toLocaleString()} confirmed working`;
+}
+
+// Populate the country <select> once channel data is in (top 60 by count).
+function populateCountryFilter() {
+  const sel = document.getElementById('countryFilter');
+  if (!sel || !db.channels.length) return;
+  const counts = new Map();
+  for (const c of db.channels) {
+    const cc = (c.country || '').toLowerCase();
+    if (cc.length === 2) counts.set(cc, (counts.get(cc) || 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60);
+  const cur = state.country || 'all';
+  sel.innerHTML = '<option value="all">🌍 All countries</option>' +
+    top.map(([cc, n]) => `<option value="${esc(cc)}">${flag(cc)} ${esc(cc.toUpperCase())} (${n.toLocaleString()})</option>`).join('');
+  sel.value = top.some(([cc]) => cc === cur) ? cur : 'all';
 }
 
 function renderChips() {
@@ -622,6 +637,13 @@ function bindChrome() {
   const ac = document.getElementById('profAccent');
   if (ac && !ac._bound) { ac._bound = 1; ac.addEventListener('change', () => setAccent(ac.value)); }
 
+  // Country filter dropdown (static element, bound once)
+  const cf = document.getElementById('countryFilter');
+  if (cf && !cf._bound) {
+    cf._bound = 1;
+    cf.addEventListener('change', () => patch({ country: cf.value }));
+  }
+
   // Multi-view badges stay in sync after every state change
   if (!window._mvBadgeBound) {
     onStateChange(() => {
@@ -646,4 +668,11 @@ Object.assign(window, {
 bindChrome();
 // P0 fix: grid had ZERO event listeners - bindGrid was imported but never called.
 bindGrid({ onOpen: { watch: openWatch, addMulti: addToMultiView } });
+// Simple Mode persistence
+if (localStorage.getItem('prism_simple') === '1') {
+  simpleMode = true;
+  document.body.classList.add('simplified');
+  const sb = document.getElementById('simpleModeBtn');
+  if (sb) { sb.textContent = 'Advanced'; sb.title = 'Switch to Advanced Mode (providers, categories, A-Z)'; }
+}
 boot();

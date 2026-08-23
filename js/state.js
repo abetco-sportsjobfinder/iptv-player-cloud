@@ -20,6 +20,7 @@ export const state = {
   ready: false,              // data loaded
   viewMode: 'quad',          // quad | single | favorites (quad = selection grid)
   selection: new Set(),      // channel ids picked for the quad grid
+  country: 'all',            // country filter (2-letter code or 'all')
 };
 
 export function emit() { for (const fn of listeners) fn(state); }
@@ -33,6 +34,9 @@ export function patch(p) {
   if ('profile' in p) localStorage.setItem('prism_profile', JSON.stringify(state.profile));
   if ('theme' in p) localStorage.setItem('prism_theme', state.theme);
   if ('accent' in p) localStorage.setItem('prism_accent', state.accent);
+  if ('query' in p || 'category' in p || 'country' in p) {
+    try { localStorage.setItem('prism_filter_state', JSON.stringify({ query: state.query, category: state.category, country: state.country })); } catch (e) {}
+  }
   emit();
 }
 
@@ -68,6 +72,7 @@ export function parseHash() {
   if (head === 'w') return { view: 'special', special: 'working' };
   if (head === 'f') return { view: 'special', special: 'fav' };
   if (head === 'r') return { view: 'special', special: 'recent' };
+  if (head === 'p' && a) return { view: 'provider', provider: a, category: b || 'all' };
   if (head === 'L' && a && b) return { view: 'brand', letter: a, brandKey: b };
   if (head === 'L' && a) return { view: 'letter', letter: a };
   return { view: 'root' };

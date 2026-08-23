@@ -350,3 +350,11 @@ body.nav-collapsed .sidebar { display: none; }
 @keyframes pl-bounce{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-6px);opacity:1}}
 #boot.done{opacity:0;transform:scale(.96);transition:opacity .4s ease,transform .4s ease;pointer-events:none}
 @media (prefers-reduced-motion: reduce){.pl-diamond,.pl-diamond span,.pl-bar i,.pl-dots span,.boot-mark{animation:none!important}#boot.done{transition:none!important}}
+
+/* ---------- simple mode (Simple/Advanced toggle) ---------- */
+body.simplified #providerGroups,
+body.simplified .tree-letters,
+body.simplified .tree-section-label.az,
+body.simplified #chips,
+body.simplified .hero { display: none !important; }
+body.simplified .tree-section-label:not(.az) { margin-top: 8px; }
