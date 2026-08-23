@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PRISM TV — System Status</title>
+<style>
+:root{--bg:#0b0d12;--surface:#12151d;--surface2:#1a1e29;--border:#232937;--text:#e8eaf0;--muted:#97a0b5;--ok:#34d399;--bad:#f87171;--warn:#fbbf24;--accent:#6366f1}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;padding:32px 16px}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:1.5rem;font-weight:800;letter-spacing:.08em;margin:0 0 4px}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);font-size:.85rem;margin-bottom:28px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px}
+.dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;background:#555e73}
+.dot.ok{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.dot.bad{background:var(--bad);box-shadow:0 0 8px var(--bad)}
+.dot.warn{background:var(--warn)}
+.t{font-weight:600;font-size:.95rem}
+.d{color:var(--muted);font-size:.78rem;margin-top:3px;line-height:1.45;word-break:break-all}
+.pill{margin-left:auto;font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--ok)} .pill.bad{color:var(--bad)} .pill.warn{color:var(--warn)}
+.links{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.links a{color:var(--accent);text-decoration:none;border:1px solid var(--border);padding:10px 16px;border-radius:10px;font-weight:600;font-size:.85rem}
+.links a:hover{filter:brightness(1.2)}
+.foot{color:var(--muted);font-size:.7rem;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>◇ PRISM <span>TV</span> — SYSTEM STATUS</h1>
+  <div class="sub">Live checks run in YOUR browser against production, right now.</div>
+
+  <div class="card" id="c-shortlist"><div class="dot" id="d-shortlist"></div><div><div class="t">Confirmed-working shortlist (nightly cron)</div><div class="d" id="shortlist-d">checking…</div></div><div class="pill" id="p-shortlist">…</div></div>
+
+  <div class="card" id="c-device"><div class="dot" id="d-device"></div><div><div class="t">Per-device private sync (favorites roundtrip)</div><div class="d" id="device-d">checking…</div></div><div class="pill" id="p-device">…</div></div>
+
+  <div class="card" id="c-src1"><div class="dot" id="d-src1"></div><div><div class="t">Upstream data: iptv-org API</div><div class="d" id="src1-d">checking…</div></div><div class="pill" id="p-src1">…</div></div>
+
+  <div class="card" id="c-src2"><div class="dot" id="d-src2"></div><div><div class="t">Upstream data: Free-TV playlist</div><div class="d" id="src2-d">checking…</div></div><div class="pill" id="p-src2">…</div></div>
+
+  <div class="links">
+    <a href="/">▶ Open PRISM TV player</a>
+    <a href="https://iptv-player-20g.pages.dev">▶ NEON STREAM (legacy UX)</a>
+    <a href="/shortlist">raw shortlist JSON</a>
+  </div>
+  <div class="foot">Generated 2026-08-23 · checks execute client-side via fetch to iptv-stream-proxy worker · no data leaves your browser except anonymous test writes</div>
+</div>
+<script>
+const W = 'https://iptv-stream-proxy.abetscrape.workers.dev';
+function set(id, ok, text, pill) {
+  document.getElementById('d-'+id).className = 'dot ' + (ok === true ? 'ok' : ok === false ? 'bad' : 'warn');
+  if (text !== null) document.getElementById(id+'-d').textContent = text;
+  const p = document.getElementById('p-'+id);
+  p.textContent = pill;
+  p.className = 'pill ' + (ok === true ? 'ok' : ok === false ? 'bad' : 'warn');
+}
+
+// 1) Shortlist freshness
+(async () => {
+  try {
+    const r = await fetch(W + '/shortlist');
+    const j = await r.json();
+    const ageMin = j.ts ? Math.round((Date.now() - Date.parse(j.ts)) / 60000) : null;
+    const fresh = j.channels && j.channels.length > 0 && ageMin !== null && ageMin < 1500;
+    set('shortlist', fresh,
+      j.channels ? `${j.channels.length} confirmed-working channels · built ${ageMin !== null ? ageMin + ' min ago' : 'unknown'} · fastest: ${j.channels[0] ? j.channels[0].id + ' (' + j.channels[0].latency + 'ms)' : 'n/a'}` : 'empty payload',
+      fresh ? j.channels.length + ' OK' : 'STALE');
+  } catch (e) { set('shortlist', false, String(e), 'FAIL'); }
+})();
+
+// 2) Per-device favorites roundtrip — proves isolation from THIS browser
+(async () => {
+  let dev = localStorage.getItem('prismDeviceId');
+  if (!dev) { dev = crypto.randomUUID(); localStorage.setItem('prismDeviceId', dev); }
+  const marker = 'status-check-' + Date.now();
+  try {
+    const put = await fetch(W + '/api/favorites', {
+      method: 'PUT',
+      headers: { 'X-Device-Id': dev, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ __check: marker }),
+    });
+    const get = await fetch(W + '/api/favorites', { headers: { 'X-Device-Id': dev } });
+    const j = await get.json();
+    const ok = put.ok && j.__check === marker;
+    set('device', ok,
+      `your device: ${dev.slice(0,8)}… · wrote marker, read it back: ${j.__check === marker ? 'MATCH' : 'MISMATCH'} · this browser's favorites are isolated from all other visitors`,
+      ok ? 'ISOLATED' : 'BROKEN');
+  } catch (e) { set('device', false, String(e), 'FAIL'); }
+})();
+
+// 3+4) Upstream sources through our proxy (ranged GET = cheap)
+async function checkSource(card, label, url) {
+  try {
+    const r = await fetch(W + '/?u=' + encodeURIComponent(url), { headers: { Range: 'bytes=0-1023' } });
+    const ok = r.status === 200 || r.status === 206;
+    set(card, ok, `${label} · HTTP ${r.status} · ${r.headers.get('content-type') || 'unknown type'}`, ok ? 'REACHABLE' : 'DOWN');
+  } catch (e) { set(card, false, String(e), 'FAIL'); }
+}
+checkSource('src1', 'channels/streams/blocklist index', 'https://iptv-org.github.io/api/streams.json');
+checkSource('src2', 'Free-TV/IPTV master playlist', 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8');
+</script>
+</body>
+</html>
