@@ -25,15 +25,22 @@ function getDeviceId(request) {
   return UUID_RE.test(id) ? id.toLowerCase() : null;
 }
 
-// ---------- In-isolate rate limiter (zero-KV; deters bursts, resets on deploy) ----------
+// ---------- Rate limiting: CF Rate Limiting binding (global) w/ in-isolate fallback ----------
 const RL = new Map(); // key -> {count, reset}
-function rateLimit(key, maxPerMinute) {
+function memLimit(key, maxPerMinute) {
   const now = Date.now();
   const e = RL.get(key);
   if (!e || now > e.reset) { RL.set(key, { count: 1, reset: now + 60000 }); return true; }
   e.count++;
   if (RL.size > 5000) RL.clear();
   return e.count <= maxPerMinute;
+}
+async function rateLimit(env, key, maxPerMinute) {
+  if (env.RATE_LIMITER) {
+    try { const r = await env.RATE_LIMITER.limit({ key }); return r.success; }
+    catch (e) { /* fall through to memory */ }
+  }
+  return memLimit(key, maxPerMinute);
 }
 
 // ---------- P0-B: nightly shortlist builder ----------
@@ -180,7 +187,7 @@ export default {
       }
       if (request.method === 'PUT') {
         const rlKey = (getDeviceId(request) || request.headers.get('cf-connecting-ip') || 'anon') + ':put';
-        if (!rateLimit(rlKey, 30)) {
+        if (!(await rateLimit(env, rlKey, 30))) {
           return new Response('rate limited', { status: 429, headers: withCors({ 'Content-Type': 'text/plain', 'Retry-After': '30' }, request) });
         }
         const raw = await request.text();
@@ -211,7 +218,7 @@ export default {
       }
       if (request.method === 'PUT') {
         const rlKey = (getDeviceId(request) || request.headers.get('cf-connecting-ip') || 'anon') + ':fav';
-        if (!rateLimit(rlKey, 30)) {
+        if (!(await rateLimit(env, rlKey, 30))) {
           return new Response('rate limited', { status: 429, headers: withCors({ 'Content-Type': 'text/plain', 'Retry-After': '30' }, request) });
         }
         const raw = await request.text();

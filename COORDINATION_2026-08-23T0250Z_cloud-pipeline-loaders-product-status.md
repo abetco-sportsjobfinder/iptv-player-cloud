@@ -116,3 +116,9 @@ Artifact: NVIDIA_DEEPSEEKV4_enterprise-audit_2026-08-23T2301Z.md (30+ findings P
 Applied immediately: click/render beacons REMOVED (KV write amplification + GDPR risk); error-trap kept (errors only); SSRF guard in proxy (private/link-local/metadata + non-http(s) -> 403); /health endpoint (kv status); shortlist Cache-Control max-age=60.
 Backlog adopted (30-day plan weeks 1-4 in artifact): rate limiting, DMCA/ToS/Privacy pages, geo-consent decision, JSON validation 400s, playlist rewrite edge cases (EXT-X-MAP/KEY), dedup + status decay, sidebar memoization/virtualization, a11y pass (focus traps, contrast, touch targets 44px), structured logging, favorites export/import.
 NOTE: permanent CF API token still required (OAuth refresh dance every ~60min continues).
+
+## ADDENDUM 2026-08-24T0615Z - TONIGHT HARDENING BATCH SHIPPED (enterprise standard, personal deployment)
+FRONTEND: fetch timeouts(15s)x3 retries on all upstream loads / status flush exponential backoff (3 tries, gives up cleanly) / X-Device-Id UUID now sent by tracking sync (device isolation LIVE end-to-end) / duplicate background-tester queue removed (single queue in tracking.js) / boot-failure Retry button / updateVisibleDots skips hidden tabs / favorites Export+Import buttons in profile dialog / a11y: aria-modal on dialogs, aria-live moved to resultCount only, 40px touch targets, :focus-visible outlines.
+WORKER: JSON validation -> 400 on malformed PUTs / rate limiting (CF Rate Limiting binding REJECTED on this plan via API -> in-isolate memory limiter 30/min per device-IP as best-effort deterrent; native binding = upgrade-path item) / SSRF private-target guard verified / /health for uptime monitors / shortlist Cache-Control 60s.
+VERIFIED LIVE: health OK, bad-JSON->400, SSRF->403, retry/backoff/device-id markers served.
+DEFERRED w/ reason: HMAC device tokens (needs secret mgmt), DO migration (scale), admin panel/DMCA/billing (non-monetized), geo-blocking (personal use).
