@@ -4,8 +4,109 @@ function withCors(headers) {
   const h = new Headers(headers || {});
   h.set('Access-Control-Allow-Origin', '*');
   h.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  h.set('Access-Control-Allow-Headers', 'Content-Type, Range, Origin, Referer, User-Agent');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Range, Origin, Referer, User-Agent, X-Device-Id');
   return h;
+}
+
+// ---------- P0-A: per-device identity ----------
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function getDeviceId(request) {
+  const id = request.headers.get('X-Device-Id') || '';
+  return UUID_RE.test(id) ? id.toLowerCase() : null;
+}
+
+// ---------- P0-B: nightly shortlist builder ----------
+const STREAMS_URL = 'https://iptv-org.github.io/api/streams.json';
+const SAMPLE_SIZE = 40;
+const STALE_MS = 23 * 60 * 60 * 1000;
+
+async function fetchJson(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error('fetch ' + url + ' -> ' + r.status);
+  return r.json();
+}
+
+// Date-seeded deterministic sample so coverage rotates predictably day to day.
+function seededSample(streams, n, seed) {
+  let s = seed >>> 0;
+  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const arr = streams.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, n);
+}
+
+async function probeChannel(stream) {
+  const t0 = Date.now();
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 8000);
+  try {
+    const resp = await fetch(stream.url, {
+      method: 'GET',
+      headers: { 'Range': 'bytes=0-2048', 'User-Agent': 'prism-probe/1.0' },
+      signal: ac.signal,
+      redirect: 'follow',
+    });
+    try { await resp.body?.cancel(); } catch {}
+    clearTimeout(timer);
+    const ct = resp.headers.get('content-type') || '';
+    const ok = resp.status >= 200 && resp.status < 400 &&
+      (/mpegurl|video|mp2t|mp4|octet-stream/i.test(ct) || resp.status === 206 || !ct);
+    return { id: stream.channel, url: stream.url, ok, latency: Date.now() - t0 };
+  } catch (e) {
+    clearTimeout(timer);
+    return { id: stream.channel, url: stream.url, ok: false, latency: Date.now() - t0, error: e.message };
+  }
+}
+
+async function runProbeBatch(streams) {
+  const out = [];
+  for (let i = 0; i < streams.length; i += 3) {
+    const batch = streams.slice(i, i + 3).map(probeChannel);
+    out.push(...await Promise.all(batch));
+  }
+  return out;
+}
+
+async function buildShortlist(env) {
+  const all = await fetchJson(STREAMS_URL);
+  const usable = all.filter(s => s.url && /^https?:\/\//.test(s.url) &&
+    !/youtube\.com|youtu\.be|\.mpd(\?|$)/i.test(s.url));
+  const daySeed = Math.floor(Date.now() / 86400000);
+  const sample = seededSample(usable, SAMPLE_SIZE, daySeed);
+  const results = await runProbeBatch(sample);
+  const working = results.filter(r => r.ok)
+    .map(r => ({ id: r.id, latency: r.latency }))
+    .sort((a, b) => a.latency - b.latency);
+  const payload = JSON.stringify({ ts: new Date().toISOString(), sampled: sample.length, channels: working });
+  await env.STATUS.put('shortlist:v1', payload);
+  await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: Date.now(), count: sample.length }));
+  return payload;
+}
+
+async function getShortlist(env) {
+  let cur = null;
+  try { cur = await env.STATUS.get('shortlist:v1'); } catch (e) {}
+  if (cur) {
+    try {
+      const parsed = JSON.parse(cur);
+      if (Date.now() - Date.parse(parsed.ts) < STALE_MS) return cur;
+    } catch (e) {}
+  }
+  let lastRun = 0;
+  try { lastRun = (JSON.parse(await env.STATUS.get('probe:lastRun')) || {}).ts || 0; } catch (e) {}
+  // Guard against write storms: rebuild at most once per stale window globally.
+  if (Date.now() - lastRun < STALE_MS) {
+    return cur || JSON.stringify({ ts: null, channels: [], note: 'build in progress' });
+  }
+  await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: Date.now(), count: 0 }));
+  try {
+    return await buildShortlist(env);
+  } catch (e) {
+    return cur || JSON.stringify({ ts: null, channels: [], error: e.message });
+  }
 }
 
 export default {
@@ -13,11 +114,16 @@ export default {
     const url = new URL(request.url);
     console.log('[proxy] method=%s path=%s', request.method, url.pathname);
 
-    // 0) Shared status log backed by Cloudflare KV (durable proof cache).
+    // 0) Stream status log. With X-Device-Id: device-scoped key (legacy fallback on read).
     if (url.pathname === '/api/status') {
+      const dev = getDeviceId(request);
+      const key = dev ? `dev:${dev}:status` : 'status';
       if (request.method === 'GET') {
         let val = {};
-        try { val = await env.STATUS.get('status', 'json') || {}; } catch (e) { }
+        try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
+        if (dev && val && !Object.keys(val).length) {
+          try { val = await env.STATUS.get('status', 'json') || {}; } catch (e) {}
+        }
         return new Response(JSON.stringify(val), {
           status: 200,
           headers: withCors({ 'Content-Type': 'application/json' }),
@@ -26,17 +132,22 @@ export default {
       if (request.method === 'PUT') {
         let body = {};
         try { body = await request.json(); } catch (e) { }
-        await env.STATUS.put('status', JSON.stringify(body));
+        await env.STATUS.put(key, JSON.stringify(body));
         return new Response('ok', { status: 200, headers: withCors() });
       }
       return new Response('method not allowed', { status: 405, headers: withCors() });
     }
 
-    // 2) Favorites cache (shared across browsers/devices).
+    // 2) Favorites cache. Device-scoped when X-Device-Id present; legacy shared otherwise.
     if (url.pathname === '/api/favorites') {
+      const dev = getDeviceId(request);
+      const key = dev ? `dev:${dev}:favorites` : 'favorites';
       if (request.method === 'GET') {
         let val = {};
-        try { val = await env.STATUS.get('favorites', 'json') || {}; } catch (e) { }
+        try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
+        if (dev && val && !Object.keys(val).length) {
+          try { val = await env.STATUS.get('favorites', 'json') || {}; } catch (e) {}
+        }
         return new Response(JSON.stringify(val), {
           status: 200,
           headers: withCors({ 'Content-Type': 'application/json' }),
@@ -45,10 +156,19 @@ export default {
       if (request.method === 'PUT') {
         let body = {};
         try { body = await request.json(); } catch (e) { }
-        await env.STATUS.put('favorites', JSON.stringify(body));
+        await env.STATUS.put(key, JSON.stringify(body));
         return new Response('ok', { status: 200, headers: withCors() });
       }
       return new Response('method not allowed', { status: 405, headers: withCors() });
+    }
+
+    // 2b) Nightly-probed "confirmed working" shortlist (P0-B). Rebuilds lazily when stale.
+    if (url.pathname === '/shortlist' && request.method === 'GET') {
+      const payload = await getShortlist(env);
+      return new Response(payload, {
+        status: 200,
+        headers: withCors({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }),
+      });
     }
 
     // 3) Phone‑as‑remote WebSocket endpoint.
@@ -134,6 +254,11 @@ export default {
         headers: withCors({ 'Content-Type': 'text/plain' }),
       });
     }
+  },
+
+  // P0-B: nightly 03:00 UTC probe run (wrangler.toml [triggers]).
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(buildShortlist(env).catch(e => console.log('[cron] shortlist build failed:', e.message)));
   }
 };
 

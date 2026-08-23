@@ -2,6 +2,9 @@ name = "iptv-stream-proxy"
 main = "worker.js"
 compatibility_date = "2025-08-16"
 
+[triggers]
+crons = ["0 3 * * *"]
+
 [[kv_namespaces]]
 binding = "STATUS"
 id = "de03ad5ba35e4d32b56e1c569ce2f183"

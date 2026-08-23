@@ -76,3 +76,12 @@ MISSING for "watch TV from anywhere, any device":
 7. Mobile payload: logos.json 2.8MB = 93% of first load.
 
 NEXT (ranked): human playback test on 2 devices -> fix what breaks; per-client sync keys in worker.js; nightly stream re-test cron (Workers Cron) publishing a working-shortlist JSON; pick winning UX and point production at it.
+
+---
+
+## ADDENDUM 2026-08-23T0910Z — P0 SHIPPED (Alpha)
+- worker.js: per-device sync keys live (X-Device-Id UUIDv4 header -> dev:{uuid}:favorites / dev:{uuid}:statuses). Legacy shared-key fallback intact for old clients. Verified isolation on prod.
+- worker.js: /shortlist endpoint + scheduled() nightly 03:00 UTC cron (wrangler.toml [triggers]). First build: 40 sampled / 31 ok / cached 286ms. Stale-rebuild guard prevents write storms.
+- KV budget: ~300 writes/day @50 devices (<1000 cap).
+- Deployed via CF REST API multipart upload (npm is broken on this machine - ECOMPROMISED - wrangler CLI unusable until fixed).
+- NEXT (needs ses_fd96bc97 or override): frontends send X-Device-Id from localStorage UUID + render /shortlist section first (P1 items follow per IMPLEMENTATION_PLAN_2026-08-23T0459Z_p0-p2-roadmap.md).
