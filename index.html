@@ -80,14 +80,16 @@ document.addEventListener('click', function(e){
   if (!b || b.dataset.loaderBound) return;
   b.dataset.loaderBound = '1';
   var done = false;
+  var realRemove = b.remove.bind(b);   /* capture BEFORE overriding */
   function finish(){
     if (done) return;
     done = true;
     b.classList.add('done');
     var ms = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 420;
-    setTimeout(function(){ b.remove(); }, ms);
+    setTimeout(function(){ b.style.display = 'none'; realRemove(); }, ms);
   }
   b.remove = finish; /* path A: main.js calls .remove() */
+  setTimeout(function(){ if (!done) { done = true; b.style.display = 'none'; } }, 30000); /* failsafe */
   new MutationObserver(function(){ /* path B: degrade silently if owner stops using .remove() */
     if (!done && (getComputedStyle(b).display === 'none' || !b.isConnected)) done = true;
   }).observe(document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style','class']});
