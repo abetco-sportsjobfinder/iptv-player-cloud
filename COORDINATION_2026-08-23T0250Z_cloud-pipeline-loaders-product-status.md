@@ -104,3 +104,9 @@ Deployed: push b4a2c31-era -> CI. Frontend files touched under human override of
 ## ADDENDUM 2026-08-23T1750Z - ZOMBIE SERVICE WORKER IDENTIFIED (the real 'nothing works')
 sw.js used stale-while-revalidate ('cached || refresh') -> returning browsers were served FROZEN old app shells across every deploy today. All upstream fixes since first visit never reached the user. sw.js now NETWORK-ONLY (prism-v3-network-only): installs skipWaiting, activate purges ALL caches, zero fetch interception. index.html gained client error trap -> /api/client-error (KV-backed, GET-readable) + visible red error banner for user reports. Worker redeployed via REST API; endpoints smoke-tested.
 USER RECOVERY PROTOCOL: two consecutive hard refreshes (Ctrl+Shift+R x2). First swap-purges old SW; second loads clean network build. Fallback nuke: DevTools > Application > Service Workers > Unregister.
+
+## ADDENDUM 2026-08-24T0300Z - Sidebar IA v2 (V4-designed) + pill instrumentation
+- New routes: #/c/<country> #/g/<genre> #/p/<prov>[/<cat>]
+- Sidebar order: Library -> Countries(top60) -> Genres(11 w/ live counts) -> Providers(real desc, Uncategorized LAST) -> A-Z (brands by count desc)
+- Uncategorized expanded = clustered submenus (prefix-token >=5, Category-Misc >=5, Country+Category >=10, Other) via js/clustering.js
+- Chips: hover counts, aria-pressed, click+render beacons for remote diagnosis of 'pills do nothing' report
