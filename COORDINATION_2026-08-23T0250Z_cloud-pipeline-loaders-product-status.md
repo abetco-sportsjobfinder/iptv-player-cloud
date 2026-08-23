@@ -90,3 +90,13 @@ NEXT (ranked): human playback test on 2 devices -> fix what breaks; per-client s
 Applied (verified live): CORS allowlist (only our two pages.dev origins echoed; foreign origins get no ACAO) / legacy-fallback REMOVED for named devices (fresh device sees {}, no cross-user leak) / shortlist rebuild lock via probe:building TTL 300s + 30min cooldown buffer + lastRun check in scheduled() too / probes now redirect:manual + strict content-type (no octet-stream false positives, 3xx = not confirmed) / sample 40->30 (subrequest headroom vs redirect chains) / PUT bodies capped 64KB -> 413 / Knuth-mixed seed.
 Deferred to backlog: HMAC-signed device tokens (needs DEVICE_SECRET), Durable Objects migration if write volume grows.
 Redeployed via CF REST API; full verification suite green on prod.
+
+## ADDENDUM 2026-08-23T1720Z - PRISM dead-UI ROOT CAUSE + FIX (V4-assisted)
+User device test: no buttons, no scrolling, 42,535 'Uncategorized'.
+ROOT CAUSES (confirmed in code):
+1. bindGrid imported but NEVER called -> grid had zero listeners (cards/fav/mv dead).
+2. grid.js referenced main.js-scoped selectedChannelIds bare -> ReferenceError on any card click even if bound.
+3. Quad WIP hijacked card clicks to selection-only mode -> normal browsing impossible.
+FIXED: selection+viewMode moved to shared state object; click=watch outside quad, click=toggle-select inside quad; bindGrid({onOpen:{watch,addMulti}}) now invoked at boot; syntax-checked via node --check (npm still broken).
+'42,535 Uncategorized' is DATA not crash: most iptv-org channels carry no provider metadata; tree groups them under Uncategorized. Proper fix = brand/letter-first grouping (roadmap P1, tree.js).
+Deployed: push b4a2c31-era -> CI. Frontend files touched under human override of touch-rule (user ordered fix).

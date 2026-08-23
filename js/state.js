@@ -18,6 +18,8 @@ export const state = {
   theme: localStorage.getItem('prism_theme') || 'dark',
   accent: localStorage.getItem('prism_accent') || 'indigo',
   ready: false,              // data loaded
+  viewMode: 'quad',          // quad | single | favorites (quad = selection grid)
+  selection: new Set(),      // channel ids picked for the quad grid
 };
 
 export function emit() { for (const fn of listeners) fn(state); }

@@ -8,6 +8,7 @@
 | `NVIDIA_DEEPSEEKV4_impl-plan_2026-08-23T0459Z.md` | 2026-08-23T04:59Z | Raw V4 implementation-plan solicitation (corrections included as constraints) |
 | `IMPLEMENTATION_PLAN_2026-08-23T0459Z_p0-p2-roadmap.md` | 2026-08-23T04:59Z | **CANONICAL roadmap**: synthesized P0→P2 plan, owners, KV schema, budgets, tests |
 | `NVIDIA_DEEPSEEKV4_p0-review_2026-08-23T0922Z.md` | 2026-08-23T09:22Z | V4 adversarial review of shipped P0 worker code; verdict SHIP w/ fixes 1-6 (applied same day) |
+| `NVIDIA_DEEPSEEKV4_prism-broken_2026-08-23T1707Z.md` | 2026-08-23T17:07Z | V4 root-cause analysis of dead-UI report on PRISM; led to bindGrid + selection-scope fix |
 | `DOCS_INDEX.md` | 2026-08-23 | This index |
 | `README.md` | 2026-08-17 | Original project readme |
 | `NEW_AGENT_PROMPT.md` | 2026-08-17T19:40Z | Onboarding prompt written for fresh agent sessions |

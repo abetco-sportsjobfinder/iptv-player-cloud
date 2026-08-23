@@ -35,8 +35,8 @@ const PROVIDER_LABELS = {};
 
 // NEW: Multi-view/quad grid display mode
 const VIEW_MODES = ['quad', 'single', 'favorites'];
-let currentViewMode = 'quad';
-let selectedChannelIds = new Set();
+// viewMode + selection live on the shared `state` object (see state.js) so
+// grid.js can read them without circular imports.
 let TREE = null;
 let heroId = null;
 let gridSig = "";
@@ -47,10 +47,10 @@ function setViewMode(mode) {
   document.querySelectorAll('#modePills .chip').forEach(b => b.classList.remove('on'));
   const activeBtn = document.querySelector(`#modePills .chip[data-view="${mode}"]`);
   if (activeBtn) activeBtn.classList.add('on');
-  
-  currentViewMode = mode;
-  selectedChannelIds = new Set();
-  window.selectedChannelIds = selectedChannelIds;
+
+  state.viewMode = mode;
+  state.selection = new Set();
+  window.selectedChannelIds = state.selection;
   
   // NEW: Theme selector with Default/Ocean/Purple/Forest options
   const themeMap = {
@@ -335,8 +335,8 @@ function renderMain() {
   document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
 
   // NEW: Handle quad view mode with selected channels
-  if (currentViewMode === 'quad' && selectedChannelIds.size > 0) {
-    renderQuadGrid([...selectedChannelIds].map(id => db.byId.get(id)).filter(Boolean));
+  if (state.viewMode === 'quad' && state.selection.size > 0) {
+    renderQuadGrid([...state.selection].map(id => db.byId.get(id)).filter(Boolean));
     return;
   }
 
@@ -644,4 +644,6 @@ Object.assign(window, {
 
 // Start the application.
 bindChrome();
+// P0 fix: grid had ZERO event listeners - bindGrid was imported but never called.
+bindGrid({ onOpen: { watch: openWatch, addMulti: addToMultiView } });
 boot();

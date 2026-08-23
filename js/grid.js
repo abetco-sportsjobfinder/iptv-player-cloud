@@ -116,24 +116,31 @@ export function bindGrid({ onOpen }) {
     if (e.target.closest('.fav-btn')) { toggleFavorite(id); return; }
     if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
     if (e.target.closest('.deselect-btn')) {
-      selectedChannelIds.delete(id);
-      window.selectedChannelIds = selectedChannelIds;
-      renderGrid(Array.from(db.byId.values()).filter(c => selectedChannelIds.has(c.id)));
+      state.selection.delete(id);
+      window.selectedChannelIds = state.selection;
+      renderGrid(Array.from(db.byId.values()).filter(c => state.selection.has(c.id)));
       updateFavButtons();
       return;
     }
-    
-    // NEW: Toggle channel selection for quad view
-    if (selectedChannelIds.has(id)) {
-      selectedChannelIds.delete(id);
-    } else {
-      selectedChannelIds.add(id);
+
+    if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
+
+    // Quad mode: clicks build the selection grid. All other modes: open channel.
+    if (state.viewMode === 'quad') {
+      if (state.selection.has(id)) {
+        state.selection.delete(id);
+      } else {
+        state.selection.add(id);
+      }
+      window.selectedChannelIds = state.selection;
+      renderGrid(Array.from(db.byId.values()).filter(c => state.selection.has(c.id)));
+      updateFavButtons();
+      return;
     }
-    window.selectedChannelIds = selectedChannelIds;
-    renderGrid(Array.from(db.byId.values()).filter(c => selectedChannelIds.has(c.id)));
-    updateFavButtons();
+
+    onOpen.watch(id);
   });
-  
+
   grid.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('card')) {
       e.preventDefault();
