@@ -197,6 +197,30 @@ export default {
       });
     }
 
+    // 2c) Client-side error telemetry (remote diagnosis; no local Chrome).
+    if (url.pathname === '/api/client-error') {
+      if (request.method === 'PUT') {
+        let p = {};
+        try { p = await request.json(); } catch (e) { }
+        if (p && typeof p.msg === 'string') {
+          let list = [];
+          try { list = await env.STATUS.get('clienterr:latest', 'json') || []; } catch (e) {}
+          list.unshift({ msg: String(p.msg).slice(0, 300), line: p.line, src: String(p.src || '').slice(-80), ua: p.ua, t: p.t });
+          await env.STATUS.put('clienterr:latest', JSON.stringify(list.slice(0, 25)));
+        }
+        return new Response('ok', { status: 200, headers: withCors(null, request) });
+      }
+      if (request.method === 'GET') {
+        let list = [];
+        try { list = await env.STATUS.get('clienterr:latest', 'json') || []; } catch (e) {}
+        return new Response(JSON.stringify(list), {
+          status: 200,
+          headers: withCors({ 'Content-Type': 'application/json' }, request),
+        });
+      }
+      return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
+    }
+
     // 3) Phone‑as‑remote WebSocket endpoint.
     if (url.pathname === '/remote' && request.method === 'GET' && request.headers.get('upgrade') === 'websocket') {
       const pair = new WebSocketPair();

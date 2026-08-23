@@ -13,6 +13,35 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+// Client error trap: surface failures visibly + report to worker for remote diagnosis.
+(function(){
+  window.__errs=[];
+  function report(e){
+    try{
+      var payload={msg:String(e.message||e.reason||e),src:String(e.filename||''),line:e.lineno||0,
+        stack:String((e.error&&e.error.stack)||'').slice(0,1000),t:Date.now(),
+        ua:navigator.userAgent.slice(0,150)};
+      window.__errs.push(payload);
+      fetch('https://iptv-stream-proxy.abetscrape.workers.dev/api/client-error',
+        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(function(){});
+    }catch(_){}
+  }
+  window.addEventListener('error',report);
+  window.addEventListener('unhandledrejection',function(e){report({message:'promise: '+((e.reason&&e.reason.message)||e.reason)});});
+  window.addEventListener('DOMContentLoaded',function(){
+    setTimeout(function(){
+      var errs=(window.__errs||[]);
+      if(!errs.length) return;
+      var b=document.createElement('div');
+      b.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#7f1d1d;color:#fff;font:12px monospace;padding:10px 14px;max-height:38vh;overflow:auto';
+      b.innerHTML='<b>'+(errs.length)+' client error(s) - screenshot & report:</b><br>'+
+        errs.map(function(x){return '['+(x.line||'?')+'] '+x.msg}).join('<br>');
+      document.body.appendChild(b);
+    },2500);
+  });
+})();
+</script>
 </head>
 <body>
 
