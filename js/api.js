@@ -5,6 +5,26 @@ const API = 'https://iptv-org.github.io/api';
 export const PROXY = 'https://iptv-stream-proxy.abetscrape.workers.dev';
 export const CUSTOM_LOGO_URL = ''; // ABET logo with spinning chip
 
+// Enterprise audit P1-C: timeouts + bounded retry for all upstream data loads.
+async function fetchT(url, opts = {}, tries = 3) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 15000);
+    try {
+      const res = await fetch(url, { ...opts, signal: ac.signal });
+      clearTimeout(t);
+      if (res.ok || res.status < 500) return res;
+      lastErr = new Error('HTTP ' + res.status);
+    } catch (e) {
+      clearTimeout(t);
+      lastErr = e;
+    }
+    await new Promise(r => setTimeout(r, 800 * (i + 1)));
+  }
+  throw lastErr || new Error('fetch failed');
+}
+
 const SOURCES = [
   { key: 'iptvorg', type: 'api' },
   { key: 'freetv', type: 'm3u', url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8' },
@@ -52,7 +72,7 @@ export async function loadAll(onProgress) {
 
 async function loadIptvOrg() {
   const [chRes, stRes, blRes] = await Promise.all([
-    fetch(`${API}/channels.json`), fetch(`${API}/streams.json`), fetch(`${API}/blocklist.json`),
+    fetchT(`${API}/channels.json`), fetchT(`${API}/streams.json`), fetchT(`${API}/blocklist.json`),
   ]);
   if (!chRes.ok || !stRes.ok || !blRes.ok) throw new Error('iptv-org API unreachable');
   const [channelsData, streamsData, blocklistData] = await Promise.all([chRes.json(), stRes.json(), blRes.json()]);
@@ -67,7 +87,7 @@ async function loadIptvOrg() {
 }
 
 async function loadM3U(url) {
-  const res = await fetch(url);
+  const res = await fetchT(url);
   const text = await res.text();
   const channels = [], streams = [];
   let current = null;

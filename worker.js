@@ -25,6 +25,17 @@ function getDeviceId(request) {
   return UUID_RE.test(id) ? id.toLowerCase() : null;
 }
 
+// ---------- In-isolate rate limiter (zero-KV; deters bursts, resets on deploy) ----------
+const RL = new Map(); // key -> {count, reset}
+function rateLimit(key, maxPerMinute) {
+  const now = Date.now();
+  const e = RL.get(key);
+  if (!e || now > e.reset) { RL.set(key, { count: 1, reset: now + 60000 }); return true; }
+  e.count++;
+  if (RL.size > 5000) RL.clear();
+  return e.count <= maxPerMinute;
+}
+
 // ---------- P0-B: nightly shortlist builder ----------
 const STREAMS_URL = 'https://iptv-org.github.io/api/streams.json';
 const SAMPLE_SIZE = 30;
@@ -168,12 +179,17 @@ export default {
         });
       }
       if (request.method === 'PUT') {
+        const rlKey = (getDeviceId(request) || request.headers.get('cf-connecting-ip') || 'anon') + ':put';
+        if (!rateLimit(rlKey, 30)) {
+          return new Response('rate limited', { status: 429, headers: withCors({ 'Content-Type': 'text/plain', 'Retry-After': '30' }, request) });
+        }
         const raw = await request.text();
         if (raw.length > MAX_BODY_BYTES) {
           return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
         }
-        let body = {};
-        try { body = JSON.parse(raw); } catch (e) { }
+        try { JSON.parse(raw); } catch (e) {
+          return new Response('invalid JSON', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
         await env.STATUS.put(key, raw);
         return new Response('ok', { status: 200, headers: withCors(null, request) });
       }
@@ -194,12 +210,17 @@ export default {
         });
       }
       if (request.method === 'PUT') {
+        const rlKey = (getDeviceId(request) || request.headers.get('cf-connecting-ip') || 'anon') + ':fav';
+        if (!rateLimit(rlKey, 30)) {
+          return new Response('rate limited', { status: 429, headers: withCors({ 'Content-Type': 'text/plain', 'Retry-After': '30' }, request) });
+        }
         const raw = await request.text();
         if (raw.length > MAX_BODY_BYTES) {
           return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
         }
-        let body = {};
-        try { body = JSON.parse(raw); } catch (e) { }
+        try { JSON.parse(raw); } catch (e) {
+          return new Response('invalid JSON', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
         await env.STATUS.put(key, raw);
         return new Response('ok', { status: 200, headers: withCors(null, request) });
       }

@@ -50,7 +50,7 @@ export function setStatus(id, status, reason) {
 
 async function pullStatusFromKV() {
   try {
-    const res = await fetch(`${PROXY}/api/status`);
+    const res = await fetch(`${PROXY}/api/status`, { headers: { 'X-Device-Id': deviceId() } });
     if (!res.ok) return;
     const data = await res.json();
     for (const [id, entry] of Object.entries(data)) {
@@ -66,14 +66,20 @@ async function pullStatusFromKV() {
 async function flushStatusToKV() {
   if (!tracking.dirty) return;
   tracking.dirty = false;
-  try {
-    const res = await fetch(`${PROXY}/api/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(Object.fromEntries(tracking.status)),
-    });
-    if (!res.ok) tracking.dirty = true;
-  } catch { tracking.dirty = true; }
+  // Enterprise audit P1-C: bounded backoff retry instead of silent single-shot.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(`${PROXY}/api/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId() },
+        body: JSON.stringify(Object.fromEntries(tracking.status)),
+      });
+      if (res.ok) return;
+      if (res.status === 400 || res.status === 413) return; // unrecoverable: drop batch
+    } catch { /* network */ }
+    await new Promise(r => setTimeout(r, 1000 * Math.pow(4, attempt)));
+  }
+  tracking.dirty = true; // give up this round; next setStatus re-arms flush
 }
 
 // ---------- background tester ----------
@@ -144,4 +150,17 @@ export async function testStream(id) {
 export async function initTracking() {
   loadStatusCache();
   await pullStatusFromKV();
+}
+
+// Device identity (enterprise audit P1-A): stable UUID minted on first run.
+export function deviceId() {
+  let d = localStorage.getItem('prismDeviceId');
+  if (!d) {
+    d = crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+    try { localStorage.setItem('prismDeviceId', d); } catch { /* private mode */ }
+  }
+  return d;
 }

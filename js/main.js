@@ -8,7 +8,7 @@ import {
 } from './state.js';
 import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag } from './tree.js';
 import { buildUncategorizedClusters } from './clustering.js';
-import { getStatus, getStatusReason, initTracking, testStream } from './tracking.js';
+import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTesting, deviceId } from './tracking.js';
 import { play, stopPlayback, primeStatus } from './player.js';
 import { addToMultiView, clearMultiView, tileCount } from './multiview.js';
 import { renderGrid, bindGrid, updateVisibleDots, updateFavButtons, cardHTML } from './grid.js';
@@ -192,36 +192,7 @@ function applyFilters(channels, filterState) {
     const matchesCountry = country === 'all' || (c.country || '').toLowerCase() === country.toLowerCase();
     return matchesQuery && matchesCategory && matchesCountry;
   });
-
-  // NEW: Auto-start background testing at end of applyFilters (Bug Fix #8)
-  startBackgroundTesting();
 }
-
-// ============ Background Testing ============
-let testingQueue = [];
-let running = false;
-
-export function startBackgroundTesting() {
-  // NEW: Extend testing to rank 2 channels (Bug Fix #7)
-  testingQueue = db.channels
-    .filter(c => getStatus(c.id) === 'unknown')
-    .sort((a, b) => (a.rank || 2) - (b.rank || 2))
-    .map(c => c.id);
-  runQueue();
-}
-
-async function runQueue() {
-  if (running) return;
-  running = true;
-  while (testingQueue.length) {
-    const batch = testingQueue.splice(0, 2);
-    await Promise.all(batch.map(testStream));
-    await new Promise(r => setTimeout(r, 1500));
-  }
-  running = false;
-}
-
-// Auto-start background testing at end of applyFilters (Bug Fix #8)
 
 // ============ Main Boot ============
 async function boot() {
@@ -240,12 +211,22 @@ async function boot() {
     patch({ route: parseHash(), ready: true });
     document.getElementById('boot')?.remove();
     startBackgroundTesting(); // NEW: Auto-start background testing at end of boot (Bug Fix #8)
-    setInterval(updateVisibleDots, 2500);
+    setInterval(() => { if (!document.hidden) updateVisibleDots(); }, 2500); // audit P2-D: skip work in background tabs
     setInterval(updateCountsChip, 3000);
     updateCountsChip();
   } catch (err) {
     console.error('[PRISM] boot failed', err);
-    setBootMsg('Failed to load channel data. Check your connection and refresh.');
+    setBootMsg('Failed to load channel data.');
+    // Enterprise audit P2-C: visible recovery path instead of dead end.
+    const box = document.querySelector('#boot .prism-loader');
+    if (box && !document.getElementById('bootRetry')) {
+      const btn = document.createElement('button');
+      btn.id = 'bootRetry';
+      btn.textContent = '↻ Retry';
+      btn.style.cssText = 'background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-weight:700;cursor:pointer';
+      btn.onclick = () => location.reload();
+      box.appendChild(btn);
+    }
   }
 }
 
@@ -713,6 +694,41 @@ function bindChrome() {
   if (cf && !cf._bound) {
     cf._bound = 1;
     cf.addEventListener('change', () => patch({ country: cf.value }));
+  }
+
+  // Favorites export / import (enterprise audit P2-H)
+  const expBtn = document.getElementById('profFavExport');
+  if (expBtn && !expBtn._bound) {
+    expBtn._bound = 1;
+    expBtn.addEventListener('click', () => {
+      const data = JSON.stringify({ exported: new Date().toISOString(), device: deviceId(), favorites: [...state.favorites] }, null, 2);
+      const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'prism-favorites.json';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
+  }
+  const impBtn = document.getElementById('profFavImport');
+  const impFile = document.getElementById('profFavFile');
+  if (impBtn && impFile && !impBtn._bound) {
+    impBtn._bound = 1;
+    impBtn.addEventListener('click', () => impFile.click());
+    impFile.addEventListener('change', async () => {
+      const file = impFile.files && impFile.files[0];
+      if (!file) return;
+      try {
+        const j = JSON.parse(await file.text());
+        const incoming = Array.isArray(j) ? j : (j.favorites || []);
+        const next = new Set(state.favorites);
+        for (const id of incoming) if (typeof id === 'string') next.add(id);
+        patch({ favorites: next });
+        impBtn.textContent = '✓ Imported ' + incoming.length;
+      } catch { impBtn.textContent = 'Import failed'; }
+      setTimeout(() => { impBtn.textContent = '⬆ Import favorites'; }, 3000);
+      impFile.value = '';
+    });
   }
 
   // Multi-view badges stay in sync after every state change
