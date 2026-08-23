@@ -100,3 +100,7 @@ ROOT CAUSES (confirmed in code):
 FIXED: selection+viewMode moved to shared state object; click=watch outside quad, click=toggle-select inside quad; bindGrid({onOpen:{watch,addMulti}}) now invoked at boot; syntax-checked via node --check (npm still broken).
 '42,535 Uncategorized' is DATA not crash: most iptv-org channels carry no provider metadata; tree groups them under Uncategorized. Proper fix = brand/letter-first grouping (roadmap P1, tree.js).
 Deployed: push b4a2c31-era -> CI. Frontend files touched under human override of touch-rule (user ordered fix).
+
+## ADDENDUM 2026-08-23T1750Z - ZOMBIE SERVICE WORKER IDENTIFIED (the real 'nothing works')
+sw.js used stale-while-revalidate ('cached || refresh') -> returning browsers were served FROZEN old app shells across every deploy today. All upstream fixes since first visit never reached the user. sw.js now NETWORK-ONLY (prism-v3-network-only): installs skipWaiting, activate purges ALL caches, zero fetch interception. index.html gained client error trap -> /api/client-error (KV-backed, GET-readable) + visible red error banner for user reports. Worker redeployed via REST API; endpoints smoke-tested.
+USER RECOVERY PROTOCOL: two consecutive hard refreshes (Ctrl+Shift+R x2). First swap-purges old SW; second loads clean network build. Fallback nuke: DevTools > Application > Service Workers > Unregister.
