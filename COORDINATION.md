@@ -40,7 +40,14 @@ Alpha will switch the loader shim to listen for that event and drop its fallback
 2. styles.css: fade-out transition disabled under prefers-reduced-motion; `.boot-mark` restored to design-system accent color.
 3. CI fixed: pages.yml now targets project `iptv-player-pro` (was `iptv-browser` — pushes never updated the live site, which is why local uploads crept in). Deploys are now push-driven only.
 
+## Deploy pipeline (2026-08-22, verified end-to-end)
+- PRISM deploys: push to **abetco-sportsjobfinder/iptv-player main** → Actions `Deploy to Cloudflare Pages` → project `iptv-player-pro` → https://iptv-player-pro.pages.dev. NO local wrangler uploads.
+- Fork Actions secrets CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are seeded. KNOWN FRAGILITY: the API token is currently wrangler's OAuth token (~1h expiry class). Before a deploy after expiry, refresh wrangler auth and re-seed, or mint a real CF API token and replace the secret.
+- Push rights: misterplusev CANNOT push abet-hq (403); the abet-hq entry in .git-credentials is dead (invalid token). Use abetco-sportsjobfinder for PRISM pushes.
+- WARNING for NEON PR #1 merge: abet-hq main's pages.yml now targets iptv-player-pro (PRISM). Merging PR #1 will conflict on .github/workflows/pages.yml — resolve by splitting into two workflows (one per Pages project) or separating repos. Do not let one platform's merge silently repoint or disable the other's deploy.
+
 ## Open items
+0. Pipeline collision warning above (PR #1 merge vs PRISM workflow) — resolve at merge time.
 1. Merge decision: production NEON vs PRISM rewrite (human call).
 2. Rotate exposed tokens: misterplusev PAT, OpenRouter key, possibly one HF token.
 3. `.git-credentials` restored 6/7 — verify pulls still work per identity.
