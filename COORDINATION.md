@@ -40,10 +40,13 @@ Alpha will switch the loader shim to listen for that event and drop its fallback
 2. styles.css: fade-out transition disabled under prefers-reduced-motion; `.boot-mark` restored to design-system accent color.
 3. CI fixed: pages.yml now targets project `iptv-player-pro` (was `iptv-browser` — pushes never updated the live site, which is why local uploads crept in). Deploys are now push-driven only.
 
-## Deploy pipeline (2026-08-22, verified end-to-end)
-- PRISM deploys: push to **abetco-sportsjobfinder/iptv-player main** → Actions `Deploy to Cloudflare Pages` → project `iptv-player-pro` → https://iptv-player-pro.pages.dev. NO local wrangler uploads.
-- Fork Actions secrets CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID are seeded. KNOWN FRAGILITY: the API token is currently wrangler's OAuth token (~1h expiry class). Before a deploy after expiry, refresh wrangler auth and re-seed, or mint a real CF API token and replace the secret.
-- Push rights: misterplusev CANNOT push abet-hq (403); the abet-hq entry in .git-credentials is dead (invalid token). Use abetco-sportsjobfinder for PRISM pushes.
+## Deploy pipeline (2026-08-23 UPDATE — private-migration in progress)
+- PUBLIC FORK DEMOTED: old fork main force-reset to 7a75928 (coordination docs + PRISM history removed from public view). Its ONLY remaining role: hosts the head branch of NEON PR #1 — do not delete until PR #1 resolves.
+- NEW PRIVATE SOURCE REPO: abetco-sportsjobfinder/iptv-player-cloud (full history, secrets seeded, local remote `deploy`). GitHub forbids privatizing forks — hence fresh repo.
+- BLOCKER: private-repo Actions gated by abetco account billing ("payments failed or spending limit") — needs human: Settings → Billing & plans. Until fixed, push-triggered runs there fail at job start (harmless).
+- Deploy options once unblocked: keep Actions (~30s/run, trivial drain) OR connect Cloudflare Pages Git integration in dash (zero GH minutes, 500 CF builds/mo). Both CF projects are currently source=none/direct-upload.
+- Verified live-deploy path while blocked: last good cloud deploys = runs 32606656282/32606793190 from the fork era. Site content is current; only future pushes wait on the billing fix.
+- misterplusev CANNOT push abet-hq (403); abet-hq entry in .git-credentials is dead. Use abetco-sportsjobfinder for PRISM pushes.
 - WARNING for NEON PR #1 merge: abet-hq main's pages.yml now targets iptv-player-pro (PRISM). Merging PR #1 will conflict on .github/workflows/pages.yml — resolve by splitting into two workflows (one per Pages project) or separating repos. Do not let one platform's merge silently repoint or disable the other's deploy.
 
 ## Open items
