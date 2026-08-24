@@ -204,8 +204,11 @@ export default {
       if (request.method === 'GET') {
         let val = {};
         try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
-        // No legacy fallback for named devices: a fresh device must not see
-        // other visitors' data. Only headerless (legacy) clients share state.
+        // Statuses are SHARED quality signals: named devices fall back to the
+        // global legacy map until their own probes populate. Not private data.
+        if ((!val || !Object.keys(val).length) && dev) {
+          try { val = await env.STATUS.get('status', 'json') || {}; } catch (e) {}
+        }
         return new Response(JSON.stringify(val), {
           status: 200,
           headers: withCors({ 'Content-Type': 'application/json' }, request),
@@ -236,7 +239,8 @@ export default {
       if (request.method === 'GET') {
         let val = {};
         try { val = await env.STATUS.get(key, 'json') || {}; } catch (e) {}
-        // Same privacy rule as /api/status above.
+        // Favorites: strict privacy — a fresh device starts EMPTY, never sees
+        // another visitor's legacy favorites.
         return new Response(JSON.stringify(val), {
           status: 200,
           headers: withCors({ 'Content-Type': 'application/json' }, request),
