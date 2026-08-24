@@ -337,7 +337,7 @@ function renderMain() {
 
   // VIDEO WALL mode: the grid area becomes N simultaneous players.
   if (state.viewMode === 'wall') {
-    wall.mountWall(document.getElementById('grid'));
+    mountWall(document.getElementById('grid'));
     return;
   }
   const staleBar = document.getElementById('quadBar');
@@ -394,7 +394,7 @@ function renderHero() {
       </div>
     </div>`;
   document.getElementById('heroPlay').onclick = () => openWatch(c.id);
-  document.getElementById('heroMv').onclick = () => { wall.addFromBrowse(c.id); setViewMode('wall'); };
+  document.getElementById('heroMv').onclick = () => { addFromBrowse(c.id); setViewMode('wall'); };
 }
 
 // ============ Sidebar ============
@@ -740,11 +740,11 @@ function bindChrome() {
   wire('profileBtn', () => { const d = document.getElementById('profilePop'); if (d && !d.open) d.showModal(); });
   wire('profClose', () => { const d = document.getElementById('profilePop'); if (d && d.open) d.close(); });
   wire('mvBtn', () => setViewMode('wall'));
-  wire('mvClear', () => { wall.clearWall(); renderMain(); });
+  wire('mvClear', () => { clearWall(); renderMain(); });
   wire('wClose', () => { const d = document.getElementById('watch'); if (d && d.open) d.close(); });
   wire('wFav', () => { if (lastWatchId) toggleFavorite(lastWatchId); });
   wire('wTest', () => { if (lastWatchId) primeStatus(lastWatchId); });
-  wire('wMulti', () => { if (lastWatchId) { wall.addFromBrowse(lastWatchId); updateMvBadges(); } });
+  wire('wMulti', () => { if (lastWatchId) { addFromBrowse(lastWatchId); updateMvBadges(); } });
 
   const th = document.getElementById('profTheme');
   if (th && !th._bound) { th._bound = 1; th.addEventListener('change', () => setTheme(th.value)); }
@@ -842,7 +842,7 @@ Object.assign(window, {
 bindChrome();
 // P0 fix: grid had ZERO event listeners - bindGrid was imported but never called.
 function addMulti(id) {
-  wall.addFromBrowse(id);
+  addFromBrowse(id);
   setViewMode('wall');
 }
 
