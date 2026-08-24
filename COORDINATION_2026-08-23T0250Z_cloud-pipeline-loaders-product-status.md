@@ -122,3 +122,6 @@ FRONTEND: fetch timeouts(15s)x3 retries on all upstream loads / status flush exp
 WORKER: JSON validation -> 400 on malformed PUTs / rate limiting (CF Rate Limiting binding REJECTED on this plan via API -> in-isolate memory limiter 30/min per device-IP as best-effort deterrent; native binding = upgrade-path item) / SSRF private-target guard verified / /health for uptime monitors / shortlist Cache-Control 60s.
 VERIFIED LIVE: health OK, bad-JSON->400, SSRF->403, retry/backoff/device-id markers served.
 DEFERRED w/ reason: HMAC device tokens (needs secret mgmt), DO migration (scale), admin panel/DMCA/billing (non-monetized), geo-blocking (personal use).
+
+## ADDENDUM 2026-08-24T0045Z - RENDER-FATAL ReferenceErrors FIXED (user console report)
+renderSidebar threw 'matchesCategory is not defined' + 'sortedProviders is not defined' on EVERY render -> grid never populated. matchesCategory was NEVER imported into main.js (this also explains original 'category pills do nothing' - currentChannels used it since inception). sortedProviders declaration lost in IA-v2 edit. Both fixed (6977b73). LESSON: node --check catches syntax only, not undefined identifiers; consider adding a real linter (eslint no-undef) to CI.
