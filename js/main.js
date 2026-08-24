@@ -233,9 +233,13 @@ async function boot() {
     // v2: boot straight into the last channel (muted auto-resume).
     const qp = new URLSearchParams(location.search);
     if (qp.get('embed') === '1') document.body.classList.add('embed');
-    const resumeId = qp.get('ch') || (() => { try { return localStorage.getItem('prism_last'); } catch (e) { return null; } })();
+    const resumeIdRaw = qp.get('ch');
+    const resumeId = (resumeIdRaw && db.byId.has(resumeIdRaw)) ? resumeIdRaw
+      : (() => { try { return localStorage.getItem('prism_last'); } catch (e) { return null; } })();
+    // Audit P1-4: embeds auto-play MUTED unless ?sound=1 is explicit.
+    const wantSound = !!qp.get('sound') || !qp.get('embed');
     if (resumeId && db.byId.has(resumeId)) {
-      openWatch(resumeId, { muted: !qp.get('ch') });   // ?ch= plays with sound
+      openWatch(resumeId, { muted: !wantSound });   // ?ch= plays with sound
       if (qp.get('embed') === '1' && qp.get('genre')) patch({ category: qp.get('genre') });
     }
 
@@ -396,7 +400,20 @@ function workingCountMap() {
 }
 
 // Netflix-style horizontal rows for the home view.
+let _homeCache = { len: -1, sections: null };
 function renderHomeRows(grid) {
+  // Audit P0-3: precompute per-genre rank-1 rows once per catalog load.
+  if (_homeCache.len !== db.channels.length || !_homeCache.sections) {
+    const byGenre = {};
+    for (const [key] of CATEGORY_CHIPS) byGenre[key] = [];
+    for (const c of db.channels) {
+      for (const [key] of CATEGORY_CHIPS) {
+        if (matchesCategory(c, key) && c.rank === 1) { byGenre[key].push(c); break; }
+      }
+    }
+    _homeCache = { len: db.channels.length, byGenre };
+  }
+
   const clean = list => state.hideBlocked !== false ? list.filter(c => !db.blocklist.has(c.id)) : list;
   const sections = [];
 
@@ -411,7 +428,7 @@ function renderHomeRows(grid) {
   if (mine.length) sections.push(['⭐ My Channels', mine]);
 
   for (const [key, label] of CATEGORY_CHIPS) {
-    const list = clean(db.channels.filter(c => matchesCategory(c, key) && c.rank === 1))
+    const list = clean((_homeCache.byGenre[key] || []))
       .sort((a, b) => b.reliable - a.reliable || a.name.localeCompare(b.name))
       .slice(0, 60);
     if (list.length >= 12) sections.push([label.toUpperCase(), list]);
@@ -506,7 +523,15 @@ function openWatch(id, opts = {}) {
     // Docked non-modal player (v2 layout): fixed card, app stays usable.
     dlg.classList.add('docked');
     if (!dlg.open) dlg.show();
-    if (opts.muted) { const v = document.getElementById('video'); if (v) v.muted = true; }
+    if (opts.muted) {
+      const v = document.getElementById('video');
+      if (v) {
+        v.muted = true;
+        // Audit P0-1: auto-resume must have a one-gesture path to sound.
+        const unmute = () => { try { v.muted = false; } catch {} };
+        document.addEventListener('pointerdown', unmute, { once: true, capture: true });
+      }
+    }
   }
   play(id, opts);
 }

@@ -21,9 +21,10 @@ function proxied(url) { return `${PROXY}?u=${encodeURIComponent(url)}`; }
 export function stopPlayback() {
   clearTimeout(loadTimer);
   loadResolved = false;
+  currentId = null;   // audit fix: stale state broke session-exclusivity checks
   const v = document.getElementById('video');
   if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
-  if (hls) { hls.destroy(); hls = null; }
+  if (hls) { try { hls.destroy(); } catch {} hls = null; }
 }
 
 export async function play(id, opts = {}) {

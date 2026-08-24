@@ -396,3 +396,6 @@ body.embed .main { padding-top: calc(var(--topbar-h,60px) + 4px); }
 /* ---------- boot error state: app visible & clickable behind the message ---------- */
 #boot.boot-error { background: rgba(11,13,18,.88); pointer-events: none; }
 #boot.boot-error .prism-loader { pointer-events: auto; background: var(--surface,#12151d); border: 1px solid #f87171; border-radius: 12px; padding: 18px 26px; }
+
+/* audit P1-5: docked player yields to guide drawer on small screens */
+@media (max-width: 900px) { body.guide-open .watch.docked { display: none; } }
