@@ -125,3 +125,8 @@ DEFERRED w/ reason: HMAC device tokens (needs secret mgmt), DO migration (scale)
 
 ## ADDENDUM 2026-08-24T0045Z - RENDER-FATAL ReferenceErrors FIXED (user console report)
 renderSidebar threw 'matchesCategory is not defined' + 'sortedProviders is not defined' on EVERY render -> grid never populated. matchesCategory was NEVER imported into main.js (this also explains original 'category pills do nothing' - currentChannels used it since inception). sortedProviders declaration lost in IA-v2 edit. Both fixed (6977b73). LESSON: node --check catches syntax only, not undefined identifiers; consider adding a real linter (eslint no-undef) to CI.
+
+## ADDENDUM 2026-08-24T0530Z - SQUARE-ONE IA (V4-designed) + REAL PROBE PIPELINE
+MEASURED TRUTH: 30,751/40,715 channels have ZERO streams; channels.json no longer contains ANY logos; ~10k streamable = the real catalog.
+SHIPPED: (a) api.js drops zero-stream entries -> every view/count now honest (~10k); (b) logo fallback chain: upstream https -> iptv-org.github.io/logos/<id>.png -> flagcdn country flag -> initial; (c) WORKER PIPELINE v2: cron */5min probes 40 rotating + 10 stale-rechecks, persistent working:v1 map, cursor rotation covers full catalog ~daily, writes ~864/day (<1000 cap); /shortlist serves merged set w/ per-channel checked-ts; (d) frontend merges working set into status map -> Working Now/quality badges use fresh global data; (e) 'Working only' toggle ON by default next to Good only; (f) 12-group genre taxonomy replacing 11 raw chips (V4 mapping).
+ESPN/NFL PATH (legitimate): per-device custom M3U ingestion designed (V4 section 5) - user adds THEIR provider line URL; channels appear under 'My Channels'. Implementation = next session item #1.
