@@ -124,6 +124,9 @@ document.addEventListener('click', function(e){
       <select id="countryFilter" aria-label="Country filter" style="margin-left:auto;background:var(--surface2,#1a1e29);color:var(--text,#e8eaf0);border:1px solid var(--border,#232937);border-radius:8px;padding:6px 10px;font-size:.8rem">
         <option value="all">🌍 All countries</option>
       </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--muted,#97a0b5);white-space:nowrap;cursor:pointer">
+        <input type="checkbox" id="hideBlocked" checked style="accent-color:var(--accent,#6366f1)"> Good only
+      </label>
     </div>
     <div id="chips" class="chips" role="tablist" aria-label="Category filter"></div>
     <div id="grid" class="grid"></div>

@@ -191,7 +191,9 @@ function applyFilters(channels, filterState) {
     const matchesCategory = category === 'all' || (c.categories && c.categories.some(cat => cat.toLowerCase() === category.toLowerCase()));
     const country = filterState.country || 'all';
     const matchesCountry = country === 'all' || (c.country || '').toLowerCase() === country.toLowerCase();
-    return matchesQuery && matchesCategory && matchesCountry;
+    const hideBlocked = filterState.hideBlocked !== false; // auto-ON unless user opts out
+    const isClean = !hideBlocked || !db.blocklist.has(c.id);
+    return matchesQuery && matchesCategory && matchesCountry && isClean;
   });
 }
 
@@ -215,8 +217,8 @@ async function boot() {
     } catch (e) { /* offline ok */ }
 
     // NEW: Persist the last filter state in localStorage and restore on load instead of clearing (Bug Fix #6)
-    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all' });
-    patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all' });
+    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all', hideBlocked: true });
+    patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all', hideBlocked: savedFilter.hideBlocked !== false });
 
     TREE = buildTree(db.channels);
     populateCountryFilter();
@@ -278,10 +280,11 @@ function channelsForRoute(route) {
 }
 
 function currentChannels() {
-  if (state.query.trim()) return applyFilters(db.channels, { query: state.query.trim(), category: state.category, country: state.country });
+  if (state.query.trim()) return applyFilters(db.channels, { query: state.query.trim(), category: state.category, country: state.country, hideBlocked: state.hideBlocked });
   let list = channelsForRoute(state.route);
   if (state.category !== 'all') list = list.filter(c => matchesCategory(c, state.category));
   if (state.country !== 'all') list = list.filter(c => (c.country || '').toLowerCase() === state.country.toLowerCase());
+  if (state.hideBlocked !== false) list = list.filter(c => !db.blocklist.has(c.id));
   return list;
 }
 
@@ -807,6 +810,22 @@ function bindChrome() {
   if (cf && !cf._bound) {
     cf._bound = 1;
     cf.addEventListener('change', () => patch({ country: cf.value }));
+  }
+
+  // "Good only" toggle (hides blocklisted channels; ON by default)
+  const hb = document.getElementById('hideBlocked');
+  if (hb && !hb._bound) {
+    hb._bound = 1;
+    hb.checked = state.hideBlocked !== false;
+    hb.addEventListener('change', () => {
+      state.hideBlocked = hb.checked;
+      try {
+        const fs = loadJSON('prism_filter_state', {});
+        fs.hideBlocked = hb.checked;
+        localStorage.setItem('prism_filter_state', JSON.stringify(fs));
+      } catch (e) {}
+      renderMain();
+    });
   }
 
   // Favorites export / import (enterprise audit P2-H)

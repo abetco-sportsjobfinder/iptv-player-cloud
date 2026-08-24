@@ -101,7 +101,7 @@ async function loadM3U(url) {
         name,
         country: (attrs['tvg-country'] || '').slice(0, 2),
         categories: attrs['group-title'] ? attrs['group-title'].split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
-        logo: attrs['tvg-logo'] || '',
+        logo: (attrs['tvg-logo'] || '').replace(/^http:\/\//i, 'https://'),
         source: 'freetv', altNames: [], provider: '', blocked: false,
       };
       channels.push(current);
