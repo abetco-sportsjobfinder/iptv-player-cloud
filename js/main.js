@@ -523,113 +523,106 @@ function renderSidebar() {
     }
   }
 
-  parts.push(`<div class="tree-section-label">📡 Providers</div><div id="providerGroups">`);
-  const UNC = 'uncategorized';
-  const realProviders = sortedProviders.filter(([p]) => p.toLowerCase() !== UNC);
-  const uncEntry = sortedProviders.find(([p]) => p.toLowerCase() === UNC);
-  for (const [prov, chans] of [...realProviders, ...(uncEntry ? [uncEntry] : [])]) {
-    const isUnc = prov.toLowerCase() === UNC;
-    const key = 'P:' + prov;
-    const isOpen = state.expanded.has(key);
+  // ===== Providers & Platforms (collapsible section; clustered submenus) =====
+  {
+    const secKeyP = 'SEC:providers';
+    const secPOpen = state.expanded.has(secKeyP);
     parts.push(`
       <div class="tree-row">
-        <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
-        <a class="tree-link" href="#/p/${encodeURIComponent(prov)}">${esc(isUnc ? 'Uncategorized (no provider)' : prov)}</a>
-        <span class="count">${chans.length.toLocaleString()}</span>
+        <button class="tw" data-toggle="${esc(secKeyP)}" aria-expanded="${secPOpen}">${secPOpen ? '\u25BE' : '\u25B8'}</button>
+        <span class="tree-link">📡 Providers &amp; Platforms</span>
+        <span class="count">${sortedProviders.length.toLocaleString()}</span>
       </div>`);
-    if (!isOpen) continue;
-
-    if (isUnc) {
-      // Clustered submenus instead of an ocean of count-1 rows.
-      let clusters;
-      try { clusters = buildUncategorizedClusters(chans); } catch (e) { clusters = []; }
-      parts.push(`<div class="tree-brands">`);
-      for (const cl of clusters.slice(0, 40)) {
-        const ckey = key + '|C:' + cl.label;
-        const cOpen = state.expanded.has(ckey);
+    if (secPOpen) {
+      parts.push(`<div id="providerGroups">`);
+      const UNC = 'uncategorized';
+      const realProviders = sortedProviders.filter(([p]) => p.toLowerCase() !== UNC);
+      const uncEntry = sortedProviders.find(([p]) => p.toLowerCase() === UNC);
+      for (const [prov, chans] of [...realProviders, ...(uncEntry ? [uncEntry] : [])]) {
+        const isUnc = prov.toLowerCase() === UNC;
+        const key = 'P:' + prov;
+        const isOpen = state.expanded.has(key);
         parts.push(`
-          <div class="tree-row sub">
-            <button class="tw" data-toggle="${esc(ckey)}" aria-expanded="${cOpen}">${cOpen ? '\u25BE' : '\u25B8'}</button>
-            <span class="tree-link">${esc(cl.label)}</span>
-            <span class="count">${cl.chans.length.toLocaleString()}</span>
+          <div class="tree-row">
+            <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
+            <a class="tree-link" href="#/p/${encodeURIComponent(prov)}">${esc(isUnc ? 'Uncategorized (no provider)' : prov)}</a>
+            <span class="count">${chans.length.toLocaleString()}</span>
           </div>`);
-        if (!cOpen) continue;
-        const shown = cl.chans.slice(0, 100);
-        parts.push(`<div class="tree-channels">`);
-        parts.push(shown.map(c => `<a class="tree-channel" data-watch="${esc(c.id)}">${esc(c.name)}</a>`).join(''));
-        if (cl.chans.length > shown.length) {
-          parts.push(`<div class="count" style="padding:4px 12px">+${(cl.chans.length - shown.length).toLocaleString()} more…</div>`);
+        if (!isOpen) continue;
+
+        // Hierarchy fix: platform membership (Amagi/Wurl/...) says nothing about
+        // content family, and our coarse category chips produced junk like
+        // "Amagi -> General". Brand-name clusters are truthful at every level.
+        let clusters;
+        try { clusters = buildUncategorizedClusters(chans); } catch (e) { clusters = []; }
+        parts.push(`<div class="tree-brands">`);
+        for (const cl of clusters.slice(0, 40)) {
+          const ckey = key + '|C:' + cl.label;
+          const cOpen = state.expanded.has(ckey);
+          parts.push(`
+            <div class="tree-row sub">
+              <button class="tw" data-toggle="${esc(ckey)}" aria-expanded="${cOpen}">${cOpen ? '\u25BE' : '\u25B8'}</button>
+              <span class="tree-link">${esc(cl.label)}</span>
+              <span class="count">${cl.chans.length.toLocaleString()}</span>
+            </div>`);
+          if (!cOpen) continue;
+          const shown = cl.chans.slice(0, 100);
+          parts.push(`<div class="tree-channels">`);
+          parts.push(shown.map(c => `<a class="tree-channel" data-watch="${esc(c.id)}">${esc(c.name)}</a>`).join(''));
+          if (cl.chans.length > shown.length) {
+            parts.push(`<div class="count" style="padding:4px 12px">+${(cl.chans.length - shown.length).toLocaleString()} more…</div>`);
+          }
+          parts.push(`</div>`);
         }
         parts.push(`</div>`);
       }
       parts.push(`</div>`);
-      continue;
     }
-
-    // Category sub-groups inside this provider
-    const cats = new Map();
-    for (const c of chans) {
-      const ck = primaryCategoryKey(c);
-      if (!cats.has(ck)) cats.set(ck, []);
-      cats.get(ck).push(c);
-    }
-    parts.push(`<div class="tree-brands">`);
-    const sortedCats = [...cats.entries()].sort((a, b) =>
-      b[1].length - a[1].length || a[0].localeCompare(b[0]));
-    for (const [catKey, list] of sortedCats) {
-      const ckey = key + '|' + catKey;
-      const cOpen = state.expanded.has(ckey);
-      parts.push(`
-        <div class="tree-row sub">
-          <button class="tw" data-toggle="${esc(ckey)}" aria-expanded="${cOpen}">${cOpen ? '\u25BE' : '\u25B8'}</button>
-          <a class="tree-link" href="#/p/${encodeURIComponent(prov)}/${encodeURIComponent(catKey)}">${esc(categoryDisplayName(catKey))}</a>
-          <span class="count">${list.length.toLocaleString()}</span>
-        </div>`);
-      if (!cOpen) continue;
-      const shown = list.slice(0, 60);
-      parts.push(`<div class="tree-channels">`);
-      parts.push(shown.map(c =>
-        `<a class="tree-channel" data-watch="${esc(c.id)}">${esc(c.name)}</a>`).join(''));
-      if (list.length > shown.length) {
-        parts.push(`<div class="count" style="padding:4px 12px">+${(list.length - shown.length).toLocaleString()} more…</div>`);
-      }
-      parts.push(`</div>`);
-    }
-    parts.push(`</div>`);
   }
-  parts.push(`</div>`);
 
-  // ===== A-Z brand browse (secondary) =====
-  parts.push(`<div class="tree-section-label az">Channels A\u2013Z</div><div class="tree-letters">`);
-  if (TREE) {
-    for (const L of sortedLetters(TREE)) {
-      const brands = TREE.get(L);
-      let count = 0;
-      for (const list of brands.values()) count += list.length;
-      const key = `L:${L}`;
-      const isOpen = state.expanded.has(key);
-      const active = state.route.view === 'letter' && state.route.letter === L;
-      parts.push(`
-        <div class="tree-row ${active ? 'active' : ''}" data-letter="${L}">
-          <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
-          <a href="#/L/${encodeURIComponent(L)}" class="tree-link">${L}</a>
-          <span class="count">${count.toLocaleString()}</span>
-        </div>`);
-      if (!isOpen) continue;
-      parts.push(`<div class="tree-brands">`);
-      for (const [bk, chans] of [...brands.entries()].sort((a, b) =>
-        b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
-        const bActive = state.route.view === 'brand' && state.route.letter === L && state.route.brandKey === bk;
+  // ===== A-Z brand browse (collapsible section) =====
+  {
+    const secKeyAZ = 'SEC:az';
+    const secAZOpen = state.expanded.has(secKeyAZ);
+    let azTotal = 0;
+    if (TREE) for (const brands of TREE.values()) for (const list of brands.values()) azTotal += list.length;
+    parts.push(`
+      <div class="tree-row">
+        <button class="tw" data-toggle="${esc(secKeyAZ)}" aria-expanded="${secAZOpen}">${secAZOpen ? '\u25BE' : '\u25B8'}</button>
+        <span class="tree-link">🔤 Channels A\u2013Z</span>
+        <span class="count">${azTotal.toLocaleString()}</span>
+      </div>`);
+    if (secAZOpen && TREE) {
+      parts.push(`<div class="tree-letters">`);
+      for (const L of sortedLetters(TREE)) {
+        const brands = TREE.get(L);
+        let count = 0;
+        for (const list of brands.values()) count += list.length;
+        const key = `L:${L}`;
+        const isOpen = state.expanded.has(key);
+        const active = state.route.view === 'letter' && state.route.letter === L;
         parts.push(`
-          <div class="tree-row sub ${bActive ? 'active' : ''}">
-            <a href="#/L/${encodeURIComponent(L)}/${encodeURIComponent(bk)}" class="tree-link">${esc(bk)}</a>
-            <span class="count">${chans.length.toLocaleString()}</span>
+          <div class="tree-row ${active ? 'active' : ''}" data-letter="${L}">
+            <button class="tw" data-toggle="${esc(key)}" aria-expanded="${isOpen}">${isOpen ? '\u25BE' : '\u25B8'}</button>
+            <a href="#/L/${encodeURIComponent(L)}" class="tree-link">${L}</a>
+            <span class="count">${count.toLocaleString()}</span>
           </div>`);
+        if (!isOpen) continue;
+        parts.push(`<div class="tree-brands">`);
+        for (const [bk, chans] of [...brands.entries()].sort((a, b) =>
+          b[1].length - a[1].length || a[0].localeCompare(b[0]))) {
+          const bActive = state.route.view === 'brand' && state.route.letter === L && state.route.brandKey === bk;
+          parts.push(`
+            <div class="tree-row sub ${bActive ? 'active' : ''}">
+              <a href="#/L/${encodeURIComponent(L)}/${encodeURIComponent(bk)}" class="tree-link">${esc(bk)}</a>
+              <span class="count">${chans.length.toLocaleString()}</span>
+            </div>`);
+        }
+        parts.push(`</div>`);
       }
       parts.push(`</div>`);
     }
   }
-  parts.push(`</div>`);
 
   nav.innerHTML = parts.join('');
   if (pills) nav.insertBefore(pills, nav.firstChild);
