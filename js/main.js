@@ -229,6 +229,16 @@ async function boot() {
     setInterval(() => { if (!document.hidden) updateVisibleDots(); }, 2500); // audit P2-D: skip work in background tabs
     setInterval(updateCountsChip, 3000);
     updateCountsChip();
+
+    // v2: boot straight into the last channel (muted auto-resume).
+    const qp = new URLSearchParams(location.search);
+    if (qp.get('embed') === '1') document.body.classList.add('embed');
+    const resumeId = qp.get('ch') || (() => { try { return localStorage.getItem('prism_last'); } catch (e) { return null; } })();
+    if (resumeId && db.byId.has(resumeId)) {
+      openWatch(resumeId, { muted: !qp.get('ch') });   // ?ch= plays with sound
+      if (qp.get('embed') === '1' && qp.get('genre')) patch({ category: qp.get('genre') });
+    }
+
     // Diagnostics: surface runtime filter state on the build tag.
     const bt = document.getElementById('buildTag');
     if (bt) {
@@ -335,23 +345,32 @@ function gridSignature(channels) {
 
 // ============ Render Main ============
 function renderMain() {
-  const channels = currentChannels();
-  const sig = gridSignature(channels);
   const hero = document.getElementById('hero');
-
-  const showHero = state.route.view === 'root' && !state.query.trim();
-  hero.style.display = showHero ? '' : 'none';
-  if (showHero) renderHero();
-
-  document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
-
-  document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
 
   // VIDEO WALL mode: the grid area becomes N simultaneous players.
   if (state.viewMode === 'wall') {
+    hero.style.display = 'none';
     mountWall(document.getElementById('grid'));
     return;
   }
+
+  // HOME (v2): Netflix-style rows on the root route with no active filters.
+  const isHome = state.route.view === 'root' && !state.query.trim() &&
+    state.category === 'all' && state.country === 'all';
+  if (isHome) {
+    hero.style.display = 'none';
+    document.getElementById('scopeTitle').textContent = 'Home';
+    document.getElementById('resultCount').textContent =
+      `${db.channels.length.toLocaleString()} streamable · ${Object.keys(workingCountMap()).length} verified working`;
+    renderHomeRows(document.getElementById('grid'));
+    return;
+  }
+
+  const channels = currentChannels();
+  const sig = gridSignature(channels);
+
+  hero.style.display = 'none';
+  document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
   const staleBar = document.getElementById('quadBar');
   if (staleBar) staleBar.remove();
 
@@ -362,6 +381,48 @@ function renderMain() {
   } else {
     updateFavButtons();
   }
+}
+
+function workingCountMap() {
+  // Count of channels with a fresh working status from any source.
+  const out = {};
+  try {
+    const stored = JSON.parse(localStorage.getItem('prism_status') || '{}');
+    for (const [id, e] of Object.entries(stored)) {
+      if (e.status === 'working' && Date.now() - (e.time || 0) < 7 * 864e5) out[id] = e.time;
+    }
+  } catch (e) {}
+  return out;
+}
+
+// Netflix-style horizontal rows for the home view.
+function renderHomeRows(grid) {
+  const clean = list => state.hideBlocked !== false ? list.filter(c => !db.blocklist.has(c.id)) : list;
+  const sections = [];
+
+  const recent = state.recent.map(r => db.byId.get(r.id)).filter(Boolean);
+  if (recent.length) sections.push(['▶ Continue Watching', recent]);
+
+  const working = db.channels.filter(c => getStatus(c.id) === 'working')
+    .sort((a, b) => lastChecked(b.id) - lastChecked(a.id));
+  if (working.length) sections.push(['✅ Working Now', working.slice(0, 80)]);
+
+  const mine = db.channels.filter(isMy);
+  if (mine.length) sections.push(['⭐ My Channels', mine]);
+
+  for (const [key, label] of CATEGORY_CHIPS) {
+    const list = clean(db.channels.filter(c => matchesCategory(c, key) && c.rank === 1))
+      .sort((a, b) => b.reliable - a.reliable || a.name.localeCompare(b.name))
+      .slice(0, 60);
+    if (list.length >= 12) sections.push([label.toUpperCase(), list]);
+  }
+
+  let html = '';
+  for (const [title, list] of sections) {
+    if (!list.length) continue;
+    html += `<div class="home-row-title">${esc(title)}</div><div class="home-row">${list.map(c => cardHTML(c)).join('')}</div>`;
+  }
+  grid.innerHTML = html || '<div class="empty-state"><h3>Building your guide…</h3><p>Probe pipeline is verifying streams. Check Working Now in a few minutes.</p></div>';
 }
 
 // ============ Scope Title ============
@@ -429,18 +490,25 @@ function specialRow(kind, label) {
   </div>`;
 }
 
-function openWatch(id) {
+function openWatch(id, opts = {}) {
   lastWatchId = id;
   const ch = db.byId.get(id);
   if (!ch) return;
+  window.__lastWatchedId = id;
+  try { localStorage.setItem('prism_last', id); } catch (e) {}
   const t = document.getElementById('wTitle');
   const m = document.getElementById('wMeta');
   if (t) t.textContent = ch.name || id;
   if (m) m.textContent = [getProviderGroup(ch), ch.country].filter(Boolean).join(' \u2022 ');
   try { primeStatus(id); } catch (_e) {}
   const dlg = document.getElementById('watch');
-  if (dlg && !dlg.open) dlg.showModal();
-  play(id);
+  if (dlg) {
+    // Docked non-modal player (v2 layout): fixed card, app stays usable.
+    dlg.classList.add('docked');
+    if (!dlg.open) dlg.show();
+    if (opts.muted) { const v = document.getElementById('video'); if (v) v.muted = true; }
+  }
+  play(id, opts);
 }
 
 function renderSidebar() {
@@ -759,13 +827,17 @@ function bindChrome() {
     if (el && !el._bound) { el._bound = 1; el.addEventListener('click', fn); }
   };
 
-  wire('sidebarToggle', () => document.body.classList.toggle('nav-collapsed'));
+  wire('sidebarToggle', () => {
+    document.body.classList.toggle('guide-open');
+    const b = document.getElementById('sidebarToggle');
+    if (b) b.setAttribute('aria-expanded', document.body.classList.contains('guide-open'));
+  });
   wire('simpleModeBtn', () => toggleSimpleMode());
   wire('profileBtn', () => { const d = document.getElementById('profilePop'); if (d && !d.open) d.showModal(); });
   wire('profClose', () => { const d = document.getElementById('profilePop'); if (d && d.open) d.close(); });
   wire('mvBtn', () => setViewMode('wall'));
   wire('mvClear', () => { clearWall(); renderMain(); });
-  wire('wClose', () => { const d = document.getElementById('watch'); if (d && d.open) d.close(); });
+  wire('wClose', () => { stopPlayback(); const d = document.getElementById('watch'); if (d && d.open) d.close(); });
   wire('wFav', () => { if (lastWatchId) toggleFavorite(lastWatchId); });
   wire('wTest', () => { if (lastWatchId) primeStatus(lastWatchId); });
   wire('wMulti', () => { if (lastWatchId) { addFromBrowse(lastWatchId); updateMvBadges(); } });

@@ -26,11 +26,13 @@ export function stopPlayback() {
   if (hls) { hls.destroy(); hls = null; }
 }
 
-export async function play(id) {
+export async function play(id, opts = {}) {
   const v = document.getElementById('video');
   if (!v) return;
   currentId = id;
   attempts = 0;
+  try { localStorage.setItem('prism_last', id); } catch (e) {}
+  v.muted = !!opts.muted;   // auto-resume boots muted (browser autoplay policy)
   pushRecent(id);
   // Free any multi-view tile holding this channel: one session per stream.
   removeFromMultiView(id);

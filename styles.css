@@ -364,6 +364,31 @@ body.simplified .tree-section-label:not(.az) { margin-top: 8px; }
 .tw { min-width: 28px; min-height: 28px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ---------- v2 layout: docked player, home rows, guide drawer, embed ---------- */
+.watch.docked {
+  position: fixed; top: calc(var(--topbar-h, 60px) + 8px); right: 8px;
+  width: min(430px, 46vw); max-height: none; margin: 0; z-index: 1200;
+}
+.watch.docked::backdrop { background: transparent; backdrop-filter: none; }
+#watch:not([open]) { display: none; }
+
+.home-row-title { font-weight: 800; font-size: .95rem; letter-spacing: .06em; margin: 20px 2px 8px; color: var(--text,#e8eaf0); }
+.home-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x proximity; }
+.home-row .card { flex: 0 0 220px; scroll-snap-align: start; }
+.home-row::-webkit-scrollbar { height: 6px; }
+
+body.guide-open #tree {
+  position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+  width: 100%; height: 58vh; z-index: 1500;
+  border-top: 2px solid var(--accent,#6366f1);
+  box-shadow: 0 -24px 48px rgba(0,0,0,.55);
+  transform: none !important;
+}
+
+body.embed header, body.embed #tree, body.embed #hero,
+body.embed .scope-row select, body.embed .scope-row label { display: none !important; }
+body.embed .main { padding-top: calc(var(--topbar-h,60px) + 4px); }
+
 /* ---------- blocked channels + fallback thumbs (user feedback round) ---------- */
 .is-blocked .cname { text-decoration: line-through; opacity: .7; }
 .thumb-fallback { font-size: .95rem !important; font-weight: 700; opacity: .55; letter-spacing: .05em; }
