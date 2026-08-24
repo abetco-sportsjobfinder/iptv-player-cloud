@@ -6,7 +6,7 @@ import { db, PROXY, CUSTOM_LOGO_URL, loadAll } from './api.js';
 import {
   state, patch, onStateChange, parseHash, toggleExpanded, toggleFavorite, esc, navigate,
 } from './state.js';
-import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag } from './tree.js';
+import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag, matchesCategory } from './tree.js';
 import { buildUncategorizedClusters } from './clustering.js';
 import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTesting, deviceId } from './tracking.js';
 import { play, stopPlayback, primeStatus } from './player.js';
@@ -461,6 +461,8 @@ function renderSidebar() {
     if (!providers.has(p)) providers.set(p, []);
     providers.get(p).push(c);
   }
+  const sortedProviders = [...providers.entries()].sort((a, b) =>
+    b[1].length - a[1].length || a[0].localeCompare(b[0]));
 
   const parts = [];
   parts.push(`<div class="tree-section-label">Library</div>`);
