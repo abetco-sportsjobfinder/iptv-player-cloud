@@ -214,6 +214,13 @@ async function boot() {
     setInterval(() => { if (!document.hidden) updateVisibleDots(); }, 2500); // audit P2-D: skip work in background tabs
     setInterval(updateCountsChip, 3000);
     updateCountsChip();
+    // Diagnostics: surface runtime filter state on the build tag.
+    const bt = document.getElementById('buildTag');
+    if (bt) {
+      const upd = () => { bt.textContent = `BUILD 12a6ae8 | ch:${db.channels.length} cat:${state.category} ctry:${state.country} view:${state.route.view}${state.route.special ? '/' + state.route.special : ''}`; };
+      upd();
+      setInterval(upd, 2000);
+    }
   } catch (err) {
     console.error('[PRISM] boot failed', err);
     setBootMsg('Failed to load channel data.');
@@ -432,6 +439,17 @@ function openWatch(id) {
 function renderSidebar() {
   const nav = document.getElementById('tree');
   if (!nav) return;
+
+  // Memoize: skip rebuild when nothing tree-relevant changed (audit P0-D).
+  const treeSig = JSON.stringify([
+    state.route.view, state.route.provider || '', state.route.letter || '', state.route.brandKey || '',
+    [...state.expanded].join(','), db.channels.length,
+  ]);
+  if (window._lastTreeSig === treeSig && nav.querySelector('.tree-row')) {
+    // Still re-append pills if a previous rebuild detached them.
+    return;
+  }
+  window._lastTreeSig = treeSig;
 
   // Preserve mode pills across innerHTML rewrites
   const pills = document.getElementById('modePills');
@@ -664,7 +682,13 @@ function bindChrome() {
 
   // State changes re-render the whole UI (route changes, favorites, expansion…)
   if (!window._onStateBound) {
-    onStateChange(() => { try { render(); } catch (err) { console.error('[PRISM] render failed', err); } });
+    let renderQueued = false;
+    onStateChange(() => {
+      // Throttle: status emits fire per-channel during testing; coalesce to one render.
+      if (renderQueued) return;
+      renderQueued = true;
+      setTimeout(() => { renderQueued = false; try { render(); } catch (err) { console.error('[PRISM] render failed', err); } }, 120);
+    });
     window._onStateBound = true;
   }
 
