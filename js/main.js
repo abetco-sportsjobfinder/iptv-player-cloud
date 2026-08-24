@@ -203,6 +203,17 @@ async function boot() {
     await initTracking();
     await loadAll(msg => setBootMsg(msg));
 
+    // Pull this device's favorites from KV (local-first merge).
+    try {
+      const fr = await fetch(`${PROXY}/api/favorites`, { headers: { 'X-Device-Id': deviceId() } });
+      const fj = await fr.json();
+      if (Array.isArray(fj.channels)) {
+        const merged = new Set(state.favorites);
+        fj.channels.forEach(id => merged.add(id));
+        patch({ favorites: merged });
+      }
+    } catch (e) { /* offline ok */ }
+
     // NEW: Persist the last filter state in localStorage and restore on load instead of clearing (Bug Fix #6)
     const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all' });
     patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all' });
@@ -365,7 +376,16 @@ function renderQuadBar() {
   bar.innerHTML = `<span><b>${n}</b> on wall</span>
     <button id="qbWatch" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">▶ Watch wall</button>
     <button id="qbClear" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer">Clear</button>`;
-  document.getElementById('qbWatch').onclick = () => { state.quadWall = true; renderMain(); };
+  document.getElementById('qbWatch').onclick = () => {
+    // Route the built wall into the proven multi-view dock (real players).
+    const ids = [...state.selection].slice(0, 4);
+    ids.forEach(id => addToMultiView(id));
+    state.quadWall = false;
+    state.selection = new Set();
+    window.selectedChannelIds = state.selection;
+    gridSig = '';
+    setViewMode('single');
+  };
   document.getElementById('qbClear').onclick = () => { state.selection = new Set(); window.selectedChannelIds = state.selection; state.quadWall = false; gridSig=''; renderMain(); };
 }
 
@@ -737,7 +757,22 @@ function bindChrome() {
   // State changes re-render the whole UI (route changes, favorites, expansion…)
   if (!window._onStateBound) {
     let renderQueued = false;
+    let lastFavSig = JSON.stringify([...state.favorites].sort());
+    let favPushTimer = null;
     onStateChange(() => {
+      // Favorites device-sync (debounced push on change)
+      const favSig = JSON.stringify([...state.favorites].sort());
+      if (favSig !== lastFavSig) {
+        lastFavSig = favSig;
+        clearTimeout(favPushTimer);
+        favPushTimer = setTimeout(() => {
+          fetch(`${PROXY}/api/favorites`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId() },
+            body: JSON.stringify({ channels: [...state.favorites] }),
+          }).catch(() => {});
+        }, 1500);
+      }
       // Throttle: status emits fire per-channel during testing; coalesce to one render.
       if (renderQueued) return;
       renderQueued = true;
