@@ -98,7 +98,9 @@ async function loadIptvOrg() {
   return {
     channels: channelsData.map(c => ({
       id: c.id, name: c.name, country: c.country || '', categories: c.categories || [],
-      logo: c.logo || '', source: 'iptvorg', altNames: [], provider: '', blocked: false,
+      logo: '',
+      favicon: c.website ? `${'https://www.google.com/s2/favicons?sz=128&domain='}${String(c.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/.*$/, '')}` : '',
+      source: 'iptvorg', altNames: [], provider: '', blocked: false,
     })),
     streams: streamsData.map(s => ({ channelId: s.channel, url: s.url })),
   };
@@ -120,6 +122,7 @@ async function loadM3U(url) {
         country: (attrs['tvg-country'] || '').slice(0, 2),
         categories: attrs['group-title'] ? attrs['group-title'].split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
         logo: (attrs['tvg-logo'] || '').replace(/^http:\/\//i, 'https://'),
+        favicon: '',
         source: 'freetv', altNames: [], provider: '', blocked: false,
       };
       channels.push(current);

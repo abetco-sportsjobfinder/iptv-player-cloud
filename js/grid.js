@@ -2,7 +2,7 @@
 // Renders only the scoped channel list; appends 60 cards per chunk. No fragile
 // absolute-position math — the failure mode of the previous build.
 
-import { db } from './api.js';
+import { db, PROXY, streamCandidates } from './api.js';
 import { state, esc } from './state.js';
 import { getStatus, lastChecked } from './tracking.js';
 import { matchesCategory, flag } from './tree.js';
@@ -20,12 +20,16 @@ export function cardHTML(c, isSelected) {
   const selected = isSelected ? ' selected' : '';
   const deselectBtn = isSelected ? '<button class="deselect-btn" title="Deselect">✕</button>' : '';
 
-  // Logo chain (audit): upstream logo -> iptv-org per-id logo -> flag -> initial.
-  // Flag fallback handled by the onerror swap; final failure hides the img.
-  const primaryLogo = c.logo || `https://iptv-org.github.io/logos/${encodeURIComponent(c.id)}.png`;
+  // Logo chain: upstream logo -> favicon(website) -> country flag -> initial.
+  // Each stage swaps via inline onerror; final failure hides the img.
   const cc = (c.country || 'xx').toLowerCase();
-  const logo = `<img class="thumb-img" loading="lazy" src="${esc(primaryLogo)}" data-flag="https://flagcdn.com/w40/${esc(cc)}.png"
-    onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.flag}else{this.style.display='none'}" alt="">`;
+  const favIcon = c.favicon || '';
+  const flagUrl = `https://flagcdn.com/w40/${cc}.png`;
+  const primaryLogo = c.logo || favIcon || flagUrl;
+  const altStage = c.logo && favIcon ? favIcon : (favIcon ? flagUrl : '');
+  const logo = `<img class="thumb-img" loading="lazy" src="${esc(primaryLogo)}"
+    data-alt="${esc(altStage)}" data-flag="${esc(flagUrl)}"
+    onerror="if(this.dataset.alt&&this.dataset.s!=='1'){this.dataset.s='1';this.src=this.dataset.alt}else if(this.dataset.s!=='2'){this.dataset.s='2';this.src=this.dataset.flag}else{this.style.display='none'}" alt="">`;
 
   const ageH = Math.floor((Date.now() - lastChecked(c.id)) / 3600000);
   const ageTag = (st === 'working' && ageH >= 0) ? ` · ⏱${ageH}h` : '';
@@ -46,6 +50,7 @@ export function cardHTML(c, isSelected) {
 }
 
 export function renderGrid(channels) {
+  stopHoverPreview();
   const grid = document.getElementById('grid');
   const countEl = document.getElementById('resultCount');
   grid.innerHTML = '';
@@ -123,6 +128,44 @@ export function bindGrid({ onOpen }) {
 
     onOpen.watch(id);
   });
+
+  // ---------- LIVE HOVER PREVIEW (what's actually on, right now) ----------
+  let hp = null; // {cardId, video, hls}
+
+  function stopHoverPreview() {
+    if (!hp) return;
+    try { hp.hls?.destroy(); } catch {}
+    try { hp.video?.pause(); hp.video?.remove(); } catch {}
+    hp = null;
+  }
+
+  function startHoverPreview(card) {
+    const id = card.dataset.id;
+    if (hp && hp.cardId === id) return;
+    stopHoverPreview();
+    if (getStatus(id) === 'dead') return;
+    const cands = streamCandidates(id);
+    if (!cands.length) return;
+    const thumb = card.querySelector('.thumb');
+    if (!thumb) return;
+    const v = document.createElement('video');
+    v.muted = true; v.autoplay = true; v.playsInline = true;
+    v.setAttribute('playsinline', '');
+    v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;background:#000';
+    thumb.appendChild(v);
+    const hls = new Hls({ enableWorker: false, maxBufferLength: 4, liveSyncDuration: 4, fragLoadingTimeOut: 8000, fragLoadingMaxRetry: 1 });
+    hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) stopHoverPreview(); });
+    hls.loadSource(`${PROXY}?u=${encodeURIComponent(cands[0].url)}`);
+    hls.attachMedia(v);
+    v.play().catch(() => {});
+    hp = { cardId: id, video: v, hls };
+  }
+
+  grid.addEventListener('mouseover', e => {
+    const card = e.target.closest('.card');
+    if (card) startHoverPreview(card); else stopHoverPreview();
+  });
+  grid.addEventListener('mouseleave', stopHoverPreview);
 
   grid.addEventListener('keydown', e => {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('card')) {
