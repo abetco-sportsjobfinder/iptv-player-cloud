@@ -55,8 +55,13 @@ export async function loadAll(onProgress) {
     if (!db.streamsByChannel.has(s.channelId)) db.streamsByChannel.set(s.channelId, []);
     db.streamsByChannel.get(s.channelId).push(s);
   }
+
+  // SQUARE-ONE (measured): 30,751 of 40,715 channels have zero streams.
+  // They are metadata noise — drop them from the working catalog entirely.
+  const streamable = channels.filter(c => db.streamsByChannel.has(c.id));
+
   // rank + reliability per channel
-  for (const c of channels) {
+  for (const c of streamable) {
     const list = db.streamsByChannel.get(c.id) || [];
     let rank = 2;
     if (list.some(s => !s.url.includes('youtube.com') && !s.url.includes('.mpd'))) rank = 1;
@@ -66,8 +71,23 @@ export async function loadAll(onProgress) {
     if (!c.provider) c.provider = inferProvider(c.id);
   }
 
-  db.channels = channels;
+  db.channels = streamable;
+
+  // Logo fallback: iptv-org removed logos from channels.json; construct per-id URL.
+  for (const c of streamable) {
+    if (!c.logo) c.logo = `https://iptv-org.github.io/logos/${encodeURIComponent(c.id)}.png`;
+  }
   state.ready = true;
+}
+
+// Working set from the worker's rolling probe pipeline.
+export async function loadWorkingSet() {
+  try {
+    const res = await fetch(`${PROXY}/shortlist`);
+    if (!res.ok) return [];
+    const j = await res.json();
+    return Array.isArray(j.channels) ? j.channels : [];
+  } catch { return []; }
 }
 
 async function loadIptvOrg() {

@@ -22,6 +22,7 @@ export const state = {
   selection: new Set(),      // channel ids picked for the quad grid
   quadWall: false,           // true = showing the built wall instead of browse
   country: 'all',            // country filter (2-letter code or 'all')
+  workingOnly: true,         // enterprise default: verified-working channels only
   hideBlocked: true,         // enterprise default: blocked channels off by default
 };
 

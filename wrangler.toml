@@ -3,7 +3,7 @@ main = "worker.js"
 compatibility_date = "2025-08-16"
 
 [triggers]
-crons = ["0 3 * * *"]
+crons = ["*/5 * * * *"]
 
 [[kv_namespaces]]
 binding = "STATUS"

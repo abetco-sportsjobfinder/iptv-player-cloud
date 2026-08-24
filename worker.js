@@ -43,11 +43,14 @@ async function rateLimit(env, key, maxPerMinute) {
   return memLimit(key, maxPerMinute);
 }
 
-// ---------- P0-B: nightly shortlist builder ----------
+// ---------- Working-set pipeline: rotating probe every cron tick ----------
+// Every 5 minutes: probe 40 untested/oldest streams + re-check 10 working ones.
+// Maintains a PERSISTENT global working set (survives restarts, merges results).
+// Full catalog (~16.8k streams) re-verified about once per day.
 const STREAMS_URL = 'https://iptv-org.github.io/api/streams.json';
-const SAMPLE_SIZE = 30;
-const STALE_MS = 23 * 60 * 60 * 1000;
-const BUILD_COOLDOWN_MS = 30 * 60 * 1000;
+const PROBE_BATCH = 40;
+const RECHECK_COUNT = 10;
+const STALE_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 64 * 1024;
 
 async function fetchJson(url, opts) {
@@ -56,25 +59,11 @@ async function fetchJson(url, opts) {
   return r.json();
 }
 
-// Date-seeded deterministic sample so coverage rotates predictably day to day.
-function seededSample(streams, n, seed) {
-  let s = (Math.imul(seed, 2654435761) >>> 0) || 1;
-  const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-  const arr = streams.slice();
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(rnd() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr.slice(0, n);
-}
-
 async function probeChannel(stream) {
   const t0 = Date.now();
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 8000);
   try {
-    // redirect:'manual' — each followed redirect costs a subrequest against
-    // the free-tier cap; a 3xx origin is treated as not-confirmed.
     const resp = await fetch(stream.url, {
       method: 'GET',
       headers: { 'Range': 'bytes=0-2048', 'User-Agent': 'prism-probe/1.0' },
@@ -89,32 +78,77 @@ async function probeChannel(stream) {
     return { id: stream.channel, url: stream.url, ok, latency: Date.now() - t0 };
   } catch (e) {
     clearTimeout(timer);
-    return { id: stream.channel, url: stream.url, ok: false, latency: Date.now() - t0, error: e.message };
+    return { id: stream.channel, url: stream.url, ok: false, latency: Date.now() - t0 };
   }
 }
 
 async function runProbeBatch(streams) {
   const out = [];
   for (let i = 0; i < streams.length; i += 3) {
-    const batch = streams.slice(i, i + 3).map(probeChannel);
-    out.push(...await Promise.all(batch));
+    out.push(...await Promise.all(streams.slice(i, i + 3).map(probeChannel)));
   }
   return out;
 }
 
-async function buildShortlist(env) {
+// Persistent rolling pipeline. KV layout:
+//   probe:cursor   number  - rotation index into usable stream list
+//   working:v1     {ts, map:{id:{latency,checked}}}
+//   shortlist:v1   frontend payload derived from working:v1
+async function runPipeline(env) {
   const all = await fetchJson(STREAMS_URL);
   const usable = all.filter(s => s.url && /^https?:\/\//.test(s.url) &&
     !/youtube\.com|youtu\.be|\.mpd(\?|$)/i.test(s.url));
-  const daySeed = Math.floor(Date.now() / 86400000);
-  const sample = seededSample(usable, SAMPLE_SIZE, daySeed);
-  const results = await runProbeBatch(sample);
-  const working = results.filter(r => r.ok)
-    .map(r => ({ id: r.id, latency: r.latency }))
-    .sort((a, b) => a.latency - b.latency);
-  const payload = JSON.stringify({ ts: new Date().toISOString(), sampled: sample.length, channels: working });
+
+  let cursor = 0;
+  try { cursor = JSON.parse(await env.STATUS.get('probe:cursor')) || 0; } catch (e) {}
+  let workingMap = {};
+  try { workingMap = (JSON.parse(await env.STATUS.get('working:v1')) || {}).map || {}; } catch (e) {}
+
+  // Batch A: next rotating slice of the catalog (cursor wraps).
+  const start = ((cursor % usable.length) + usable.length) % usable.length;
+  const batchA = usable.slice(start, start + PROBE_BATCH);
+  if (start + PROBE_BATCH >= usable.length) batchA.push(...usable.slice(0, (start + PROBE_BATCH) - usable.length));
+  const nextCursor = (start + PROBE_BATCH) % usable.length;
+
+  // Batch B: freshness re-checks on a slice of the current working set.
+  const workIds = Object.keys(workingMap);
+  const recheckIds = [];
+  if (workIds.length) {
+    const now = Date.now();
+    const staleFirst = workIds.sort((a, b) => (workingMap[a].checked || 0) - (workingMap[b].checked || 0));
+    for (const id of staleFirst.slice(0, RECHECK_COUNT)) {
+      const s = usable.find(u => u.channel === id);
+      if (s) recheckIds.push(s);
+      if (recheckIds.length >= RECHECK_COUNT) break;
+    }
+  }
+
+  const byId = new Map(usable.map(u => [u.channel, u]));
+  const probed = [
+    ...await runProbeBatch(batchA),
+    ...await runProbeBatch(recheckIds.map(id => ({ channel: id, url: byId.get(id)?.url })).filter(s => s && s.url)),
+  ];
+
+  const checkedNow = Date.now();
+  let confirmed = 0, lost = 0;
+  for (const r of probed) {
+    if (r.ok) { workingMap[r.id] = { latency: r.latency, checked: checkedNow }; confirmed++; }
+    else if (workingMap[r.id]) { delete workingMap[r.id]; lost++; }
+  }
+
+  const ts = new Date().toISOString();
+  await env.STATUS.put('working:v1', JSON.stringify({ ts, map: workingMap }));
+  await env.STATUS.put('probe:cursor', JSON.stringify(nextCursor));
+  await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: checkedNow, count: probed.length }));
+
+  const channels = Object.entries(workingMap)
+    .map(([id, v]) => ({ id, latency: v.latency, checked: v.checked }))
+    .sort((a, b) => b.checked - a.checked);
+  const payload = JSON.stringify({
+    ts, sampled: probed.length, confirmed, lost,
+    total_working: channels.length, cursor: nextCursor, channels,
+  });
   await env.STATUS.put('shortlist:v1', payload);
-  await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: Date.now(), count: sample.length }));
   return payload;
 }
 
@@ -127,19 +161,11 @@ async function getShortlist(env) {
       if (Date.now() - Date.parse(parsed.ts) < STALE_MS) return cur;
     } catch (e) {}
   }
-  let lastRun = 0;
-  try { lastRun = (JSON.parse(await env.STATUS.get('probe:lastRun')) || {}).ts || 0; } catch (e) {}
-  // Cooldown = stale window minus safety buffer; KV is eventually consistent
-  // across PoPs so the building-flag TTL below carries the real lock duty.
-  if (Date.now() - lastRun < STALE_MS - BUILD_COOLDOWN_MS) {
-    return cur || JSON.stringify({ ts: null, channels: [], note: 'build in progress' });
-  }
   const building = await env.STATUS.get('probe:building');
   if (building) return cur || JSON.stringify({ ts: null, channels: [], note: 'build in progress' });
-  await env.STATUS.put('probe:building', '1', { expirationTtl: 300 });
-  await env.STATUS.put('probe:lastRun', JSON.stringify({ ts: Date.now(), count: 0 }));
+  await env.STATUS.put('probe:building', '1', { expirationTtl: 240 });
   try {
-    const built = await buildShortlist(env);
+    const built = await runPipeline(env);
     await env.STATUS.delete('probe:building');
     return built;
   } catch (e) {
@@ -365,16 +391,9 @@ export default {
     }
   },
 
-  // P0-B: nightly 03:00 UTC probe run (wrangler.toml [triggers]).
+  // Cron tick (*/5): advance the rolling probe pipeline.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil((async () => {
-      try {
-        const last = await env.STATUS.get('probe:lastRun');
-        const ts = last ? (JSON.parse(last).ts || 0) : 0;
-        if (Date.now() - ts < STALE_MS - BUILD_COOLDOWN_MS) return; // lazy rebuild already covered it
-      } catch (e) {}
-      await buildShortlist(env).catch(e => console.log('[cron] shortlist build failed:', e.message));
-    })());
+    ctx.waitUntil(runPipeline(env).catch(e => console.log('[cron] pipeline failed:', e.message)));
   }
 };
 

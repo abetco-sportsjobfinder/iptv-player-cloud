@@ -4,7 +4,7 @@
 
 import { db } from './api.js';
 import { state, esc } from './state.js';
-import { getStatus } from './tracking.js';
+import { getStatus, lastChecked } from './tracking.js';
 import { matchesCategory, flag } from './tree.js';
 import { toggleFavorite } from './state.js';
 
@@ -17,14 +17,18 @@ export function cardHTML(c, isSelected) {
   const dot = { working: 'ok', dead: 'dead', testing: 'testing' }[st] || '';
   const fav = state.favorites.has(c.id);
   const blocked = db.blocklist.has(c.id);
-  // NEW: Selection state for quad view
   const selected = isSelected ? ' selected' : '';
-  // NEW: Deselect button shown only in selection mode
   const deselectBtn = isSelected ? '<button class="deselect-btn" title="Deselect">✕</button>' : '';
-  // Fallback initial always rendered underneath; failed logos simply hide.
-  const logo = c.logo
-    ? `<img class="thumb-img" loading="lazy" src="${esc(c.logo)}" alt="" onerror="this.style.display='none'">`
-    : '';
+
+  // Logo chain (audit): upstream logo -> iptv-org per-id logo -> flag -> initial.
+  // Flag fallback handled by the onerror swap; final failure hides the img.
+  const primaryLogo = c.logo || `https://iptv-org.github.io/logos/${encodeURIComponent(c.id)}.png`;
+  const cc = (c.country || 'xx').toLowerCase();
+  const logo = `<img class="thumb-img" loading="lazy" src="${esc(primaryLogo)}" data-flag="https://flagcdn.com/w40/${esc(cc)}.png"
+    onerror="if(!this.dataset.f){this.dataset.f=1;this.src=this.dataset.flag}else{this.style.display='none'}" alt="">`;
+
+  const ageH = Math.floor((Date.now() - lastChecked(c.id)) / 3600000);
+  const ageTag = (st === 'working' && ageH >= 0) ? ` · ⏱${ageH}h` : '';
   return `
   <article class="card${selected} ${blocked ? 'is-blocked' : ''}" data-id="${esc(c.id)}" tabindex="0" role="button"
            aria-label="${esc(c.name)}">
@@ -37,7 +41,7 @@ export function cardHTML(c, isSelected) {
       <span class="play-hint">\u25B6</span>
     </div>
     <div class="cname" title="${esc(c.name)}">${esc(c.name)}</div>
-    <div class="cmeta">${flag(c.country)} ${esc(c.country || '')}</div>
+    <div class="cmeta">${flag(c.country)} ${esc(c.country || '')}${ageTag}</div>
   </article>`;
 }
 

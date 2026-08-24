@@ -152,6 +152,25 @@ export async function initTracking() {
   await pullStatusFromKV();
 }
 
+// Merge probe-pipeline results (id/latency/checked) into status map.
+// Never overrides newer local entries; single emit at end.
+export function mergeWorkingSet(entries) {
+  let changed = false;
+  for (const e of entries) {
+    if (!e.id || !e.checked) continue;
+    const local = tracking.status.get(e.id);
+    if (!local || (local.time || 0) < e.checked) {
+      tracking.status.set(e.id, { status: 'working', time: e.checked, reason: 'probe_ok' });
+      changed = true;
+    }
+  }
+  if (changed) { saveStatusCache(); emit(); }
+}
+
+export function lastChecked(id) {
+  return tracking.status.get(id)?.time || 0;
+}
+
 // Device identity (enterprise audit P1-A): stable UUID minted on first run.
 export function deviceId() {
   let d = localStorage.getItem('prismDeviceId');

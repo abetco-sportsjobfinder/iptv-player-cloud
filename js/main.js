@@ -6,9 +6,10 @@ import { db, PROXY, CUSTOM_LOGO_URL, loadAll } from './api.js';
 import {
   state, patch, onStateChange, parseHash, toggleExpanded, toggleFavorite, esc, navigate,
 } from './state.js';
-import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag, matchesCategory } from './tree.js';
+import { buildTree, sortedLetters, letterFor, CATEGORY_CHIPS, flag, matchesCategory, GENRE_GROUPS, primaryCategoryKeyFor } from './tree.js';
 import { buildUncategorizedClusters } from './clustering.js';
-import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTesting, deviceId } from './tracking.js';
+import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTesting, deviceId, mergeWorkingSet, lastChecked } from './tracking.js';
+import { loadWorkingSet } from './api.js';
 import { play, stopPlayback, primeStatus } from './player.js';
 import { addToMultiView, clearMultiView, tileCount } from './multiview.js';
 import { renderGrid, bindGrid, updateVisibleDots, updateFavButtons, cardHTML } from './grid.js';
@@ -18,19 +19,7 @@ import { registerSW } from './pwa.js';
 // ============ Constants ============
 const AVATARS = ['\u{1F43A}', '\u{1F98A}', '\u{1F419}', '\u{1F42C}', '\u{1F984}', '\u{1F996}', '\u{1F43B}', '\u{1F98E}'];
 
-const CATEGORY_LABELS = {
-  all: 'All',
-  news: 'News',
-  sports: 'Sports',
-  kids: 'Kids',
-  movies: 'Movies',
-  series: 'Series',
-  music: 'Music',
-  entertainment: 'Entertainment',
-  documentary: 'Documentary',
-  culture: 'Culture',
-  general: 'General',
-};
+const CATEGORY_LABELS = Object.fromEntries(GENRE_GROUPS);
 
 const PROVIDER_LABELS = {};
 
@@ -204,6 +193,8 @@ async function boot() {
   try {
     await initTracking();
     await loadAll(msg => setBootMsg(msg));
+    const workingSet = await loadWorkingSet();
+    mergeWorkingSet(workingSet);
 
     // Pull this device's favorites from KV (local-first merge).
     try {
@@ -217,8 +208,8 @@ async function boot() {
     } catch (e) { /* offline ok */ }
 
     // NEW: Persist the last filter state in localStorage and restore on load instead of clearing (Bug Fix #6)
-    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all', hideBlocked: true });
-    patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all', hideBlocked: savedFilter.hideBlocked !== false });
+    const savedFilter = loadJSON('prism_filter_state', { query: '', category: 'all', country: 'all', hideBlocked: true, workingOnly: true });
+    patch({ query: savedFilter.query, category: savedFilter.category, country: savedFilter.country || 'all', hideBlocked: savedFilter.hideBlocked !== false, workingOnly: savedFilter.workingOnly !== false });
 
     TREE = buildTree(db.channels);
     populateCountryFilter();
@@ -285,6 +276,7 @@ function currentChannels() {
   if (state.category !== 'all') list = list.filter(c => matchesCategory(c, state.category));
   if (state.country !== 'all') list = list.filter(c => (c.country || '').toLowerCase() === state.country.toLowerCase());
   if (state.hideBlocked !== false) list = list.filter(c => !db.blocklist.has(c.id));
+  if (state.workingOnly) list = list.filter(c => getStatus(c.id) === 'working');
   return list;
 }
 
@@ -459,12 +451,7 @@ function renderHero() {
 // Primary grouping: Provider -> Category -> channels.
 // Secondary: A-Z brand browse preserved below the provider tree.
 function primaryCategoryKey(c) {
-  const chips = CATEGORY_CHIPS.filter(([k]) => k !== 'all');
-  for (const cat of (c.categories || [])) {
-    const hit = chips.find(([k]) => k.toLowerCase() === String(cat).toLowerCase());
-    if (hit) return hit[0];
-  }
-  return 'general';
+  return primaryCategoryKeyFor(c);
 }
 
 function categoryDisplayName(key) {
@@ -699,6 +686,15 @@ function setBootMsg(msg) {
   if (el) el.textContent = msg;
 }
 
+// Persist one filter key into the saved-filter snapshot.
+function persistFilter(key, value) {
+  try {
+    const fs = loadJSON('prism_filter_state', {});
+    fs[key] = value;
+    localStorage.setItem('prism_filter_state', JSON.stringify(fs));
+  } catch (e) {}
+}
+
 function updateCountsChip() {
   const chip = document.getElementById('statusChip');
   if (!chip || !db.channels.length) return;
@@ -812,18 +808,24 @@ function bindChrome() {
     cf.addEventListener('change', () => patch({ country: cf.value }));
   }
 
-  // "Good only" toggle (hides blocklisted channels; ON by default)
+  // "Working only" + "Good only" toggles (persisted; both ON by default)
+  const wo = document.getElementById('workingOnly');
+  if (wo && !wo._bound) {
+    wo._bound = 1;
+    wo.checked = state.workingOnly !== false;
+    wo.addEventListener('change', () => {
+      state.workingOnly = wo.checked;
+      persistFilter('workingOnly', wo.checked);
+      renderMain();
+    });
+  }
   const hb = document.getElementById('hideBlocked');
   if (hb && !hb._bound) {
     hb._bound = 1;
     hb.checked = state.hideBlocked !== false;
     hb.addEventListener('change', () => {
       state.hideBlocked = hb.checked;
-      try {
-        const fs = loadJSON('prism_filter_state', {});
-        fs.hideBlocked = hb.checked;
-        localStorage.setItem('prism_filter_state', JSON.stringify(fs));
-      } catch (e) {}
+      persistFilter('hideBlocked', hb.checked);
       renderMain();
     });
   }

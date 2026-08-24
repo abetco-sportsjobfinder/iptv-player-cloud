@@ -54,32 +54,42 @@ export function sortedLetters(tree) {
   return [...tree.keys()].sort((a, b) => (a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b)));
 }
 
-export const CATEGORY_CHIPS = [
-  ['all', 'All'],
-  ['news', 'News'],
-  ['sports', 'Sports'],
-  ['kids', 'Kids'],
-  ['movies', 'Movies'],
-  ['series', 'Series'],
-  ['music', 'Music'],
-  ['entertainment', 'Entertainment'],
-  ['documentary', 'Documentary'],
-  ['culture', 'Culture'],
-  ['general', 'General'],
+// Genre taxonomy (V4 square-one): 12 groups mapping ~50 raw iptv-org tags.
+export const GENRE_GROUPS = [
+  ['general', 'General', ['general', 'mixed', 'lifestyle', 'other']],
+  ['entertainment', 'Entertainment', ['entertainment', 'variety', 'reality']],
+  ['news', 'News', ['news', 'business', 'politics']],
+  ['sports', 'Sports', ['sports', 'motorsport', 'extreme']],
+  ['music', 'Music', ['music', 'classical', 'jazz', 'rock', 'pop']],
+  ['movies', 'Movies', ['movies', 'cinema', 'action', 'drama']],
+  ['series', 'Series', ['series', 'sitcom', 'soap', 'anime']],
+  ['kids', 'Kids', ['kids', 'cartoon', 'preschool', 'family']],
+  ['documentary', 'Documentary', ['documentary', 'history', 'nature', 'science']],
+  ['religious', 'Religious', ['religious', 'christian', 'islam', 'jewish', 'hindu', 'buddhist']],
+  ['education', 'Education', ['education', 'learning', 'university']],
+  ['local', 'Local & Regional', ['local', 'regional', 'community', 'legislative', 'city', 'shop', 'travel', 'weather']],
 ];
+export const CATEGORY_CHIPS = GENRE_GROUPS.map(([k, l]) => [k, l]);
 
 export function matchesCategory(c, chip) {
   if (chip === 'all') return true;
-  const q = chip.toLowerCase();
-  return c.categories.some(cat => cat.toLowerCase() === q);
+  if (chip === 'general') {
+    // General = explicit general tags OR channels whose tags map to nothing.
+    return (c.categories || []).length === 0 ||
+      (c.categories || []).some(cat => GENRE_GROUPS[0][2].includes(cat.toLowerCase()));
+  }
+  const grp = GENRE_GROUPS.find(([k]) => k === chip);
+  if (grp) return (c.categories || []).some(cat => grp[2].includes(cat.toLowerCase()));
+  return (c.categories || []).some(cat => cat.toLowerCase() === String(chip).toLowerCase());
 }
 
-// Shared: first known chip-category for a channel, else 'general'.
+// Shared: first known group for a channel, else 'general'.
 export function primaryCategoryKeyFor(c) {
-  const chips = CATEGORY_CHIPS.filter(([k]) => k !== 'all');
   for (const cat of (c.categories || [])) {
-    const hit = chips.find(([k]) => k.toLowerCase() === String(cat).toLowerCase());
-    if (hit) return hit[0];
+    const cl = String(cat).toLowerCase();
+    for (const [key, , tags] of GENRE_GROUPS) {
+      if (tags.includes(cl)) return key;
+    }
   }
   return 'general';
 }
