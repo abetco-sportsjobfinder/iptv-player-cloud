@@ -846,16 +846,20 @@ function bindChrome() {
 
   // Multi-view badges stay in sync after every state change
   if (!window._mvBadgeBound) {
-    onStateChange(() => {
-      const n = (typeof tileCount === 'function') ? tileCount() : 0;
-      ['mvCount', 'mvCount2'].forEach(id => {
-        const el = document.getElementById(id); if (el) el.textContent = n;
-      });
-      const dock = document.getElementById('mvDock');
-      if (dock) dock.classList.toggle('has-tiles', n > 0);
-    });
+    onStateChange(updateMvBadges);
     window._mvBadgeBound = true;
   }
+}
+
+// Single source of truth for dock badge + visibility (was: missing fn -> ReferenceError on every MV action).
+function updateMvBadges() {
+  const n = tileCount();
+  ['mvCount', 'mvCount2'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = n;
+  });
+  const dockEl = document.getElementById('mvDock');
+  if (dockEl) dockEl.classList.toggle('has-tiles', n > 0);
 }
 
 // Inline HTML attributes resolve against window.
