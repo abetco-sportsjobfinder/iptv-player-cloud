@@ -2,6 +2,13 @@
 import { db, PROXY, streamCandidates } from './api.js';
 import { getStatus, setStatus, testStream } from './tracking.js';
 import { pushRecent } from './state.js';
+import { addToMultiView, removeFromMultiView, onMainStop } from './multiview.js';
+
+// Session exclusivity: when a multi-view tile claims this channel,
+// release the main player's connection to the same origin stream.
+onMainStop(id => {
+  if (currentId === id) stopPlayback();
+});
 
 let hls = null;
 let loadTimer = null;
@@ -25,6 +32,8 @@ export async function play(id) {
   currentId = id;
   attempts = 0;
   pushRecent(id);
+  // Free any multi-view tile holding this channel: one session per stream.
+  removeFromMultiView(id);
 
   const reason = db.blocklist.get(id);
   if (reason) { ui(`Blocked: ${db.byId.get(id)?.name || id} — ${reason}`); stopPlayback(); return; }

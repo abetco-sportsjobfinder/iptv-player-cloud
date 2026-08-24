@@ -1,11 +1,12 @@
 // PRISM TV - multi-view dock: up to 4 muted PiP tiles alongside the main player
 import { db, PROXY, streamCandidates } from './api.js';
 import { esc } from './state.js';
+import { stopPlayback } from './player.js';
 
 const MAX_TILES = 4;
 const dock = () => document.getElementById('mvDock');
 
-let tiles = [];   // {id, video, hls}
+let tiles = [];   // {id, video, hls, url}
 
 export function tileCount() { return tiles.length; }
 
@@ -13,8 +14,13 @@ export function addToMultiView(id) {
   if (tiles.some(t => t.id === id)) { toast('Already in multi-view'); return; }
   if (tiles.length >= MAX_TILES) { toast(`Multi-view is full (max ${MAX_TILES})`); return; }
   const cands = streamCandidates(id);
-  if (!cands.length) { toast('No stream available for this channel'); return; }
+  if (!cands.length) { toast('No stream available for this channel'); return }
 
+  // One session per origin channel: if it's playing as the main stream,
+  // stop the main player so the tile owns the connection exclusively.
+  stopPlaybackFor(id);
+
+  const candsUrl = `${PROXY}?u=${encodeURIComponent(cands[0].url)}`;
   const tile = document.createElement('div');
   tile.className = 'mv-tile';
   tile.innerHTML = `
@@ -23,19 +29,29 @@ export function addToMultiView(id) {
     <button class="mv-close" title="Remove" aria-label="Remove">\u00d7</button>`;
   const video = tile.querySelector('video');
   tile.querySelector('.mv-close').onclick = () => removeFromMultiView(id);
+  // Tap-to-restart: recovers tiles whose origin dropped the session.
+  video.addEventListener('click', () => startTile(video, candsUrl));
   dock().appendChild(tile);
 
-  let hls = null;
-  const url = `${PROXY}?u=${encodeURIComponent(cands[0].url)}`;
+  const hls = startTile(video, candsUrl);
+  tiles.push({ id, video, hls, url: candsUrl });
+  updateBadge();
+}
+
+function startTile(video, url) {
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = url;
-  } else if (window.Hls && Hls.isSupported()) {
+    return null;
+  }
+  let hls = null;
+  if (window.Hls && Hls.isSupported()) {
     hls = new Hls({ enableWorker: true, maxBufferLength: 15, liveSyncDuration: 15 });
     hls.loadSource(url);
     hls.attachMedia(video);
+  } else {
+    video.src = url;
   }
-  tiles.push({ id, video, hls });
-  updateBadge();
+  return hls;
 }
 
 export function removeFromMultiView(id) {
@@ -64,10 +80,21 @@ function updateBadge() {
 }
 
 function toast(msg) {
+  // Native <dialog> sits in the browser top-layer: a body-level toast would
+  // render underneath it while the watch dialog is open. Append there instead.
+  const dlg = document.getElementById('watch');
+  const host = (dlg && dlg.open) ? dlg : document.body;
   const t = document.createElement('div');
-  t.className = 'toast';
+  t.className = 'toast show';
+  t.style.zIndex = '99999';
   t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.classList.add('show'));
+  host.appendChild(t);
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2200);
+}
+
+// Hook the main player registers: stop main playback when a tile claims its channel.
+let mainStopHook = null;
+export function onMainStop(fn) { mainStopHook = fn; }
+function stopPlaybackFor(id) {
+  if (mainStopHook) mainStopHook(id);
 }
