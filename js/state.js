@@ -18,8 +18,9 @@ export const state = {
   theme: localStorage.getItem('prism_theme') || 'dark',
   accent: localStorage.getItem('prism_accent') || 'indigo',
   ready: false,              // data loaded
-  viewMode: 'quad',          // quad | single | favorites (quad = selection grid)
+  viewMode: 'quad',          // quad | single | favorites (quad = wall builder)
   selection: new Set(),      // channel ids picked for the quad grid
+  quadWall: false,           // true = showing the built wall instead of browse
   country: 'all',            // country filter (2-letter code or 'all')
 };
 

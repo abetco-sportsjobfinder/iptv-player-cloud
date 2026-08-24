@@ -51,6 +51,7 @@ function setViewMode(mode) {
 
   state.viewMode = mode;
   state.selection = new Set();
+  state.quadWall = false;
   window.selectedChannelIds = state.selection;
   
   // NEW: Theme selector with Default/Ocean/Purple/Forest options
@@ -324,10 +325,19 @@ function renderMain() {
 
   document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
 
-  // NEW: Handle quad view mode with selected channels
-  if (state.viewMode === 'quad' && state.selection.size > 0) {
-    renderQuadGrid([...state.selection].map(id => db.byId.get(id)).filter(Boolean));
-    return;
+  document.getElementById('scopeTitle').textContent = scopeTitle(state.route);
+
+  // Quad wall: shown only when user explicitly presses "Watch wall".
+  // Browsing always stays visible; card clicks PLAY (never collapse the list).
+  if (state.viewMode === 'quad') {
+    renderQuadBar();
+    if (state.quadWall && state.selection.size > 0) {
+      renderQuadGrid([...state.selection].map(id => db.byId.get(id)).filter(Boolean));
+      return;
+    }
+  } else {
+    const oldBar = document.getElementById('quadBar');
+    if (oldBar) oldBar.remove();
   }
 
   if (sig !== gridSig) {
@@ -337,6 +347,26 @@ function renderMain() {
   } else {
     updateFavButtons();
   }
+}
+
+// Sticky action bar for quad-wall building (audit: explicit > implicit).
+function renderQuadBar() {
+  let bar = document.getElementById('quadBar');
+  const anchor = document.getElementById('chips');
+  if (!bar) {
+    if (!anchor) return;
+    bar = document.createElement('div');
+    bar.id = 'quadBar';
+    bar.style.cssText = 'display:flex;gap:10px;align-items:center;padding:8px 0;font-size:.8rem;color:var(--muted)';
+    anchor.after(bar);
+  }
+  const n = state.selection.size;
+  if (!n) { bar.innerHTML = '<span>Quad mode: click cards to add them to your wall.</span>'; return; }
+  bar.innerHTML = `<span><b>${n}</b> on wall</span>
+    <button id="qbWatch" style="background:var(--accent);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer">▶ Watch wall</button>
+    <button id="qbClear" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 12px;cursor:pointer">Clear</button>`;
+  document.getElementById('qbWatch').onclick = () => { state.quadWall = true; renderMain(); };
+  document.getElementById('qbClear').onclick = () => { state.selection = new Set(); window.selectedChannelIds = state.selection; state.quadWall = false; gridSig=''; renderMain(); };
 }
 
 // NEW: Render quad grid for selected channels
@@ -797,6 +827,7 @@ function bindChrome() {
 Object.assign(window, {
   windowManager, handleSearchInput, setViewMode,
   navigate, toggleProviderGroup, toggleSimpleMode,
+  renderMain, refreshQuadBar: () => renderQuadBar(),
 });
 
 // Start the application.

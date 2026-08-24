@@ -118,14 +118,15 @@ export function bindGrid({ onOpen }) {
     if (e.target.closest('.deselect-btn')) {
       state.selection.delete(id);
       window.selectedChannelIds = state.selection;
-      renderGrid(Array.from(db.byId.values()).filter(c => state.selection.has(c.id)));
-      updateFavButtons();
+      if (!state.selection.size) state.quadWall = false;
+      if (window.renderMain) window.renderMain();
       return;
     }
 
     if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
 
-    // Quad mode: clicks build the selection grid. All other modes: open channel.
+    // Quad mode: clicks build the wall (highlight only — the list NEVER collapses).
+    // Every other mode: click opens the channel.
     if (state.viewMode === 'quad') {
       if (state.selection.has(id)) {
         state.selection.delete(id);
@@ -133,8 +134,8 @@ export function bindGrid({ onOpen }) {
         state.selection.add(id);
       }
       window.selectedChannelIds = state.selection;
-      renderGrid(Array.from(db.byId.values()).filter(c => state.selection.has(c.id)));
-      updateFavButtons();
+      card.classList.toggle('selected', state.selection.has(id));
+      if (window.refreshQuadBar) window.refreshQuadBar();
       return;
     }
 
