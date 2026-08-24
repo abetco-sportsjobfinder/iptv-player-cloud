@@ -123,6 +123,31 @@ async function runPipeline(env) {
     }
   }
 
+  // Harvest DISTRIBUTED test results: every visitor's background tester probes
+  // from residential IPs (origins block datacenter egress fast). Sample up to
+  // 25 device status maps per run and fold fresh "working" reports into the set.
+  let harvested = 0;
+  try {
+    const list = await env.STATUS.list({ prefix: 'dev:' });
+    let sampled = 0;
+    for (const key of list.keys) {
+      if (sampled >= 25) break;
+      if (!key.name.includes(':status')) continue;
+      sampled++;
+      try {
+        const data = JSON.parse(await env.STATUS.get(key.name)) || {};
+        for (const [id, e] of Object.entries(data)) {
+          if (!e || e.status !== 'working') continue;
+          if (Date.now() - (e.time || 0) > 3 * 24 * 60 * 60 * 1000) { delete workingMap[id]; continue; }
+          if (!workingMap[id] || (workingMap[id].checked || 0) < (e.time || 0)) {
+            workingMap[id] = { latency: 0, checked: e.time || Date.now() };
+            harvested++;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
   const byId = new Map(usable.map(u => [u.channel, u]));
   const probed = [
     ...await runProbeBatch(batchA),
@@ -192,6 +217,24 @@ export default {
       let kv = 'up';
       try { await env.STATUS.get('probe:lastRun'); } catch (e) { kv = 'down'; }
       return new Response(JSON.stringify({ ok: kv === 'up', kv, ts: Date.now() }), {
+        status: 200,
+        headers: withCors({ 'Content-Type': 'application/json' }, request),
+      });
+    }
+
+    // Pipeline diagnostics (why is the working set the size it is?)
+    if (url.pathname === '/probe-status' && request.method === 'GET') {
+      const g = async k => { try { return await env.STATUS.get(k); } catch (e) { return null; } };
+      const out = {};
+      out.lastRun = JSON.parse((await g('probe:lastRun')) || '{}');
+      out.cursor = JSON.parse((await g('probe:cursor')) || '0');
+      const w = JSON.parse((await g('working:v1')) || '{}');
+      out.working_count = Object.keys(w.map || {}).length;
+      out.working_ts = w.ts || null;
+      const sl = JSON.parse((await g('shortlist:v1')) || '{}');
+      out.shortlist_ts = sl.ts || null;
+      out.shortlist_channels = (sl.channels || []).length;
+      return new Response(JSON.stringify(out), {
         status: 200,
         headers: withCors({ 'Content-Type': 'application/json' }, request),
       });
