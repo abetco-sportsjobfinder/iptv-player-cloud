@@ -11,6 +11,8 @@
 | `NVIDIA_DEEPSEEKV4_prism-broken_2026-08-23T1707Z.md` | 2026-08-23T17:07Z | V4 root-cause analysis of dead-UI report on PRISM; led to bindGrid + selection-scope fix |
 | `NVIDIA_DEEPSEEKV4_enterprise-audit_2026-08-23T2301Z.md` | 2026-08-23T23:01Z | **EXHAUSTIVE enterprise audit**: 30+ findings P0-P4 (security/legal/scale/a11y/ops), quick-wins, 30-day hardening plan. P0 subset applied same day |
 | `NVIDIA_DEEPSEEKV4_square-one-IA_2026-08-24T0429Z.md` | 2026-08-24T04:29Z | V4 square-one IA redesign based on measured catalog truth (30,751/40,715 channels have zero streams); Working-Set-first model |
+| `NVIDIA_DEEPSEEKV4_v2-layout-review_2026-08-24T2135Z.md` | 2026-08-24T21:35Z | V4 adversarial review of v2 layout (docked player/home rows/drawer/embed); P0-P3 findings applied in 679d643 |
+| `AGENT_SWARM_PROTOCOL_2026-08-24T0730Z.md` | 2026-08-24T07:30Z | Reusable multi-agent orchestration protocol (roles, contracts, verification gates) — hand this to any new agent |
 | `DOCS_INDEX.md` | 2026-08-23 | This index |
 | `README.md` | 2026-08-17 | Original project readme |
 | `NEW_AGENT_PROMPT.md` | 2026-08-17T19:40Z | Onboarding prompt written for fresh agent sessions |
