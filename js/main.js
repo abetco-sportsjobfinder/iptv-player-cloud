@@ -208,6 +208,11 @@ async function boot() {
 
     TREE = buildTree(db.channels);
     populateCountryFilter();
+    // First-run: Genres section starts expanded.
+    if (!localStorage.getItem('prism_expanded')) {
+      try { localStorage.setItem('prism_expanded', JSON.stringify(['SEC:genres'])); } catch (e) {}
+      state.expanded.add('SEC:genres');
+    }
     patch({ route: parseHash(), ready: true });
     document.getElementById('boot')?.remove();
     startBackgroundTesting(); // NEW: Auto-start background testing at end of boot (Bug Fix #8)
@@ -470,29 +475,53 @@ function renderSidebar() {
   parts.push(specialRow('f', 'Favorites'));
   parts.push(specialRow('r', 'Recently Watched'));
 
-  // ===== Browse by Country (top 60) =====
+  // ===== Browse by Country (top 60, collapsible) =====
   if (db.channels.length) {
     const cc = new Map();
     for (const c of db.channels) {
       const k = (c.country || '').toLowerCase();
       if (k.length === 2) cc.set(k, (cc.get(k) || 0) + 1);
     }
-    parts.push(`<div class="tree-section-label">🌍 Countries</div><div id="countryGroups">`);
-    for (const [code, n] of [...cc.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)) {
-      const active = state.route.view === 'country' && state.route.country === code;
-      parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/c/${esc(code)}">${flag(code)} ${esc(code.toUpperCase())}</a><span class="count">${n.toLocaleString()}</span></div>`);
+    const secKey = 'SEC:countries';
+    const secOpen = state.expanded.has(secKey);
+    const total = [...cc.values()].reduce((s, n) => s + n, 0);
+    parts.push(`
+      <div class="tree-row">
+        <button class="tw" data-toggle="${esc(secKey)}" aria-expanded="${secOpen}">${secOpen ? '\u25BE' : '\u25B8'}</button>
+        <span class="tree-link">🌍 Countries</span>
+        <span class="count">${cc.size.toLocaleString()}</span>
+      </div>`);
+    if (secOpen) {
+      parts.push(`<div class="tree-brands">`);
+      for (const [code, n] of [...cc.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)) {
+        const active = state.route.view === 'country' && state.route.country === code;
+        parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/c/${esc(code)}">${flag(code)} ${esc(code.toUpperCase())}</a><span class="count">${n.toLocaleString()}</span></div>`);
+      }
+      parts.push(`</div>`);
     }
-    parts.push(`</div>`);
   }
 
-  // ===== Browse by Genre =====
-  parts.push(`<div class="tree-section-label">🎭 Genres</div><div id="genreGroups">`);
-  for (const [key, label] of CATEGORY_CHIPS.filter(([k]) => k !== 'all')) {
-    const n = db.channels.filter(c => matchesCategory(c, key)).length;
-    const active = state.route.view === 'genre' && state.route.genre === key;
-    parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/g/${esc(key)}">${esc(label)}</a><span class="count">${n.toLocaleString()}</span></div>`);
+  // ===== Browse by Genre (collapsible, open by default) =====
+  {
+    const secKey = 'SEC:genres';
+    const secOpen = state.expanded.has(secKey) || !localStorage.getItem('prism_expanded');
+    const genreCount = db.channels.length;
+    parts.push(`
+      <div class="tree-row">
+        <button class="tw" data-toggle="${esc(secKey)}" aria-expanded="${secOpen}">${secOpen ? '\u25BE' : '\u25B8'}</button>
+        <span class="tree-link">🎭 Genres</span>
+        <span class="count">${genreCount.toLocaleString()}</span>
+      </div>`);
+    if (secOpen) {
+      parts.push(`<div class="tree-brands">`);
+      for (const [key, label] of CATEGORY_CHIPS.filter(([k]) => k !== 'all')) {
+        const n = db.channels.filter(c => matchesCategory(c, key)).length;
+        const active = state.route.view === 'genre' && state.route.genre === key;
+        parts.push(`<div class="tree-row ${active ? 'active' : ''}"><a class="tree-link" href="#/g/${esc(key)}">${esc(label)}</a><span class="count">${n.toLocaleString()}</span></div>`);
+      }
+      parts.push(`</div>`);
+    }
   }
-  parts.push(`</div>`);
 
   parts.push(`<div class="tree-section-label">📡 Providers</div><div id="providerGroups">`);
   const UNC = 'uncategorized';
