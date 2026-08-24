@@ -18,9 +18,7 @@ export const state = {
   theme: localStorage.getItem('prism_theme') || 'dark',
   accent: localStorage.getItem('prism_accent') || 'indigo',
   ready: false,              // data loaded
-  viewMode: 'single',        // single = click-to-play; quad = opt-in wall builder
-  selection: new Set(),      // channel ids picked for the quad grid
-  quadWall: false,           // true = showing the built wall instead of browse
+  viewMode: 'single',        // single = click-to-play; wall = multi-stream grid
   country: 'all',            // country filter (2-letter code or 'all')
   workingOnly: true,         // enterprise default: verified-working channels only
   hideBlocked: true,         // enterprise default: blocked channels off by default

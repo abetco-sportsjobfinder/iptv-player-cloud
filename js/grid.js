@@ -119,29 +119,7 @@ export function bindGrid({ onOpen }) {
     const id = card.dataset.id;
     if (e.target.closest('.fav-btn')) { toggleFavorite(id); return; }
     if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
-    if (e.target.closest('.deselect-btn')) {
-      state.selection.delete(id);
-      window.selectedChannelIds = state.selection;
-      if (!state.selection.size) state.quadWall = false;
-      if (window.renderMain) window.renderMain();
-      return;
-    }
-
     if (e.target.closest('.mv-add')) { onOpen.addMulti(id); return; }
-
-    // Quad mode: clicks build the wall (highlight only — the list NEVER collapses).
-    // Every other mode: click opens the channel.
-    if (state.viewMode === 'quad') {
-      if (state.selection.has(id)) {
-        state.selection.delete(id);
-      } else {
-        state.selection.add(id);
-      }
-      window.selectedChannelIds = state.selection;
-      card.classList.toggle('selected', state.selection.has(id));
-      if (window.refreshQuadBar) window.refreshQuadBar();
-      return;
-    }
 
     onOpen.watch(id);
   });
