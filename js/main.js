@@ -11,7 +11,7 @@ import { buildUncategorizedClusters } from './clustering.js';
 import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTesting, deviceId, mergeWorkingSet, lastChecked } from './tracking.js';
 import { loadWorkingSet } from './api.js';
 import { play, stopPlayback, primeStatus } from './player.js';
-import { addToWall, mountWall, clearWall } from './wall.js';
+import { addToWall, mountWall, clearWall, wallState } from './wall.js';
 import { renderGrid, bindGrid, updateVisibleDots, updateFavButtons, cardHTML } from './grid.js';
 import { applyTheme, setTheme, setAccent } from './themes.js';
 import { registerSW } from './pwa.js';
@@ -232,15 +232,19 @@ async function boot() {
   } catch (err) {
     console.error('[PRISM] boot failed', err);
     setBootMsg('Failed to load channel data.');
-    // Enterprise audit P2-C: visible recovery path instead of dead end.
-    const box = document.querySelector('#boot .prism-loader');
-    if (box && !document.getElementById('bootRetry')) {
-      const btn = document.createElement('button');
-      btn.id = 'bootRetry';
-      btn.textContent = '↻ Retry';
-      btn.style.cssText = 'background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-weight:700;cursor:pointer';
-      btn.onclick = () => location.reload();
-      box.appendChild(btn);
+    // Keep the app usable behind the overlay; show a recovery button.
+    const bb = document.getElementById('boot');
+    if (bb) {
+      bb.classList.add('boot-error');
+      const box = bb.querySelector('.prism-loader');
+      if (box && !document.getElementById('bootRetry')) {
+        const btn = document.createElement('button');
+        btn.id = 'bootRetry';
+        btn.textContent = '↻ Retry';
+        btn.style.cssText = 'background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-weight:700;cursor:pointer';
+        btn.onclick = () => location.reload();
+        box.appendChild(btn);
+      }
     }
   }
 }
@@ -818,9 +822,9 @@ function bindChrome() {
   }
 }
 
-// Wall badge sync (was: dock tile count -> now wall occupancy).
+// Wall badge sync.
 function updateMvBadges() {
-  const n = wall.wallState.cells.filter(c => c.id).length;
+  const n = wallState.cells.filter(c => c.id).length;
   ['mvCount', 'mvCount2'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.textContent = n;

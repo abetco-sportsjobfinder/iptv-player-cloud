@@ -367,3 +367,7 @@ body.simplified .tree-section-label:not(.az) { margin-top: 8px; }
 /* ---------- blocked channels + fallback thumbs (user feedback round) ---------- */
 .is-blocked .cname { text-decoration: line-through; opacity: .7; }
 .thumb-fallback { font-size: .95rem !important; font-weight: 700; opacity: .55; letter-spacing: .05em; }
+
+/* ---------- boot error state: app visible & clickable behind the message ---------- */
+#boot.boot-error { background: rgba(11,13,18,.88); pointer-events: none; }
+#boot.boot-error .prism-loader { pointer-events: auto; background: var(--surface,#12151d); border: 1px solid #f87171; border-radius: 12px; padding: 18px 26px; }

@@ -73,10 +73,8 @@ export async function loadAll(onProgress) {
 
   db.channels = streamable;
 
-  // Logo fallback: iptv-org removed logos from channels.json; construct per-id URL.
-  for (const c of streamable) {
-    if (!c.logo) c.logo = `https://iptv-org.github.io/logos/${encodeURIComponent(c.id)}.png`;
-  }
+  // Logos: channels.json ships none; Free-TV tvg-logos are kept (https-upgraded).
+  // Cards without a logo render their country flag (see grid.js onerror chain).
   state.ready = true;
 }
 
