@@ -12,6 +12,7 @@ import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTe
 import { loadWorkingSet } from './api.js';
 import { play, stopPlayback, primeStatus } from './player.js';
 import { addToWall, mountWall, clearWall, wallState } from './wall.js';
+import * as mySources from './sources.js';
 import { renderGrid, bindGrid, updateVisibleDots, updateFavButtons, cardHTML } from './grid.js';
 import { applyTheme, setTheme, setAccent } from './themes.js';
 import { registerSW } from './pwa.js';
@@ -193,6 +194,12 @@ async function boot() {
     await loadAll(msg => setBootMsg(msg));
     const workingSet = await loadWorkingSet();
     mergeWorkingSet(workingSet);
+    // User-supplied sources (bring-your-own playlist) — merged after catalog.
+    const srcList = await mySources.fetchSources();
+    if (srcList.length) {
+      await mySources.mergeSources(srcList);
+      render(); // include My Channels in the tree
+    }
 
     // Pull this device's favorites from KV (local-first merge).
     try {
@@ -272,13 +279,18 @@ function channelsForRoute(route) {
   }
 }
 
+// Custom-source channels (user playlists) — exempt from catalog filters.
+function isMy(c) {
+  return typeof c.source === 'string' && c.source.startsWith('my_');
+}
+
 function currentChannels() {
   if (state.query.trim()) return applyFilters(db.channels, { query: state.query.trim(), category: state.category, country: state.country, hideBlocked: state.hideBlocked });
   let list = channelsForRoute(state.route);
   if (state.category !== 'all') list = list.filter(c => matchesCategory(c, state.category));
   if (state.country !== 'all') list = list.filter(c => (c.country || '').toLowerCase() === state.country.toLowerCase());
-  if (state.hideBlocked !== false) list = list.filter(c => !db.blocklist.has(c.id));
-  if (state.workingOnly) list = list.filter(c => getStatus(c.id) === 'working');
+  if (state.hideBlocked !== false) list = list.filter(c => !db.blocklist.has(c.id) || isMy(c));
+  if (state.workingOnly) list = list.filter(c => getStatus(c.id) === 'working' || isMy(c));
   return list;
 }
 
@@ -460,6 +472,18 @@ function renderSidebar() {
     b[1].length - a[1].length || a[0].localeCompare(b[0]));
 
   const parts = [];
+
+  // ===== My Channels (user-supplied sources — always on top) =====
+  const mine = db.channels.filter(isMy);
+  if (mine.length) {
+    parts.push(`<div class="tree-section-label">⭐ My Channels (${mine.length})</div><div class="tree-brands">`);
+    for (const c of [...mine].sort((a, b) => a.name.localeCompare(b.name)).slice(0, 300)) {
+      parts.push(`<a class="tree-channel" data-watch="${esc(c.id)}">${esc(c.name)}</a>`);
+    }
+    if (mine.length > 300) parts.push(`<div class="count" style="padding:4px 12px">+${(mine.length - 300).toLocaleString()} more…</div>`);
+    parts.push(`</div>`);
+  }
+
   parts.push(`<div class="tree-section-label">Library</div>`);
   parts.push(specialRow('w', 'Working Now'));
   parts.push(specialRow('f', 'Favorites'));
@@ -813,6 +837,51 @@ function bindChrome() {
       setTimeout(() => { impBtn.textContent = '⬆ Import favorites'; }, 3000);
       impFile.value = '';
     });
+  }
+
+  // My Sources: add / list / remove user playlists
+  async function refreshSrcListUI() {
+    const box = document.getElementById('srcList');
+    if (!box) return;
+    const list = await mySources.fetchSources();
+    box.innerHTML = list.length
+      ? list.map(s => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.78rem;padding:3px 0"><span>📄 ${esc(s.name)}</span><button data-delsrc="${esc(s.id)}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:.9rem">✕</button></div>`).join('')
+      : '<span style="color:var(--muted);font-size:.75rem">No sources yet — paste an M3U URL above.</span>';
+    box.querySelectorAll('[data-delsrc]').forEach(btn => {
+      btn.onclick = async () => {
+        const list = await mySources.fetchSources();
+        const entry = list.find(s => s.id === btn.dataset.delsrc);
+        const next = list.filter(s => s.id !== btn.dataset.delsrc);
+        await mySources.saveSources(next);
+        if (entry) mySources.removeSourceChannels('my_' + entry.id);
+        refreshSrcListUI();
+        renderMain();
+      };
+    });
+  }
+  const srcAdd = document.getElementById('srcAdd');
+  if (srcAdd && !srcAdd._bound) {
+    srcAdd._bound = 1;
+    srcAdd.addEventListener('click', async () => {
+      const nameEl = document.getElementById('srcName');
+      const urlEl = document.getElementById('srcUrl');
+      const url = (urlEl?.value || '').trim();
+      const nm = (nameEl?.value || '').trim() || 'My playlist';
+      if (!/^https:\/\//i.test(url)) { srcAdd.textContent = '✗ https URL'; setTimeout(() => srcAdd.textContent = 'Add', 2000); return; }
+      const list = await mySources.fetchSources();
+      if (list.length >= 10 || list.some(s => s.url === url)) { srcAdd.textContent = '✗ dup/max'; setTimeout(() => srcAdd.textContent = 'Add', 2000); return; }
+      srcAdd.textContent = 'Fetching…';
+      const entry = { id: crypto.randomUUID().replace(/-/g, '').slice(0, 10), name: nm, url };
+      list.push(entry);
+      if (!await mySources.saveSources(list)) { srcAdd.textContent = '✗ save failed'; return; }
+      await mySources.mergeSources([entry]);
+      nameEl.value = ''; urlEl.value = '';
+      await refreshSrcListUI();
+      render();
+      srcAdd.textContent = '✓';
+      setTimeout(() => srcAdd.textContent = 'Add', 1500);
+    });
+    refreshSrcListUI();
   }
 
   // Multi-view badges stay in sync after every state change
