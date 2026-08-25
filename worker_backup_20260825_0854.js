@@ -7,7 +7,6 @@ function withCors(headers, request) {
   const ALLOWED_ORIGINS = [
     'https://iptv-player-pro.pages.dev',
     'https://iptv-player-20g.pages.dev',
-    'https://prism-tv.pages.dev',
   ];
   const origin = request && request.headers.get('Origin');
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
