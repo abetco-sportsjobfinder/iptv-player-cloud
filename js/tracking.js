@@ -111,6 +111,10 @@ export async function testStream(id) {
     const streams = db.streamsByChannel.get(id) || [];
     if (!streams.length) { setStatus(id, 'dead', 'no_streams'); return; }
     for (const s of streams.slice(0, 3)) {
+      // LAN-direct streams (HDHomeRun): the worker cannot reach them and the
+      // browser cannot probe cross-origin either. Assume alive; playback is
+      // the only real test, and failover still applies.
+      if (s.direct) { setStatus(id, 'working', 'antenna_direct'); return; }
       if (!/^https?:\/\//.test(s.url) || s.url.includes('youtube.com') || s.url.includes('.mpd')) continue;
       const proxied = `${PROXY}?u=${encodeURIComponent(s.url)}`;
       const isPlaylist = /\.m3u8?(\?.*)?$/i.test(s.url);

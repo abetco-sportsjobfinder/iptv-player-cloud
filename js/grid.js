@@ -146,6 +146,7 @@ export function bindGrid({ onOpen }) {
     if (getStatus(id) === 'dead') return;
     const cands = streamCandidates(id);
     if (!cands.length) return;
+    if (cands[0].direct) return; // LAN-direct: no CORS for hover preview; skip
     const thumb = card.querySelector('.thumb');
     if (!thumb) return;
     const v = document.createElement('video');

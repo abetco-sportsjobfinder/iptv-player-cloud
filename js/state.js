@@ -22,6 +22,7 @@ export const state = {
   country: 'all',            // country filter (2-letter code or 'all')
   workingOnly: true,         // enterprise default: verified-working channels only
   hideBlocked: true,         // enterprise default: blocked channels off by default
+  grandma: localStorage.getItem('prism_grandma') !== 'off', // Easy TV mode: default ON
 };
 
 export function emit() { for (const fn of listeners) fn(state); }
@@ -33,6 +34,7 @@ export function patch(p) {
   if ('favorites' in p) localStorage.setItem('prism_favs', JSON.stringify([...state.favorites]));
   if ('recent' in p) localStorage.setItem('prism_recent', JSON.stringify(state.recent.slice(0, 30)));
   if ('profile' in p) localStorage.setItem('prism_profile', JSON.stringify(state.profile));
+  if ('grandma' in p) localStorage.setItem('prism_grandma', state.grandma ? 'on' : 'off');
   if ('theme' in p) localStorage.setItem('prism_theme', state.theme);
   if ('accent' in p) localStorage.setItem('prism_accent', state.accent);
   if ('query' in p || 'category' in p || 'country' in p) {

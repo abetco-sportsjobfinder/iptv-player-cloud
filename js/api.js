@@ -6,7 +6,7 @@ export const PROXY = 'https://iptv-stream-proxy.abetscrape.workers.dev';
 export const CUSTOM_LOGO_URL = ''; // ABET logo with spinning chip
 
 // Enterprise audit P1-C: timeouts + bounded retry for all upstream data loads.
-async function fetchT(url, opts = {}, tries = 3) {
+export async function fetchT(url, opts = {}, tries = 3) {
   let lastErr;
   for (let i = 0; i < tries; i++) {
     const ac = new AbortController();
@@ -108,7 +108,12 @@ async function loadIptvOrg() {
 
 async function loadM3U(url) {
   const res = await fetchT(url);
-  const text = await res.text();
+  return parseM3UText(await res.text(), 'freetv');
+}
+
+// Shared M3U parser (also used by js/sources/m3u.js for owner playlists).
+// idPrefix keeps legacy 'ftv_' ids byte-identical for the built-in Free-TV source.
+export function parseM3UText(text, sourceId, idPrefix = 'ftv') {
   const channels = [], streams = [];
   let current = null;
   for (const raw of text.split('\n')) {
@@ -117,13 +122,13 @@ async function loadM3U(url) {
       const attrs = parseExtinf(line);
       const name = attrs.name || 'Unknown';
       current = {
-        id: attrs['tvg-id'] || ('ftv_' + name.replace(/[^a-z0-9]/gi, '').toLowerCase()),
+        id: attrs['tvg-id'] || (idPrefix + '_' + name.replace(/[^a-z0-9]/gi, '').toLowerCase()),
         name,
         country: (attrs['tvg-country'] || '').slice(0, 2),
         categories: attrs['group-title'] ? attrs['group-title'].split(/[;,|]/).map(t => t.trim()).filter(Boolean) : [],
         logo: (attrs['tvg-logo'] || '').replace(/^http:\/\//i, 'https://'),
         favicon: '',
-        source: 'freetv', altNames: [], provider: '', blocked: false,
+        source: sourceId, altNames: [], provider: '', blocked: false,
       };
       channels.push(current);
     } else if (line && !line.startsWith('#') && current) {
@@ -133,7 +138,7 @@ async function loadM3U(url) {
   return { channels, streams };
 }
 
-function parseExtinf(line) {
+export function parseExtinf(line) {
   const m = line.match(/#EXTINF:-?\d+(?:\s+(.*))?,(.*)/);
   if (!m) return { name: 'Unknown', attrs: {} };
   const attrs = {};
@@ -167,4 +172,24 @@ export function streamCandidates(id) {
   const pool = https.length ? https : clean;
   const good = pool.filter(s => GOOD_CDNS.some(cdn => s.url.includes(cdn)));
   return [...good, ...pool.filter(s => !good.includes(s))];
+}
+
+// Fold owner-source channels/streams (js/sources/*) into the working catalog.
+// Collision-safe: duplicate ids are skipped, LAN-direct streams pass through.
+export function mergeIntoDb({ channels = [], streams = [] }) {
+  for (const s of streams) {
+    if (!s.url || !/^https?:\/\//.test(s.url)) continue;
+    if (!db.streamsByChannel.has(s.channelId)) db.streamsByChannel.set(s.channelId, []);
+    db.streamsByChannel.get(s.channelId).push(s);
+  }
+  for (const c of channels) {
+    if (db.byId.has(c.id)) continue;
+    if (!db.streamsByChannel.has(c.id)) continue; // square-one rule: no stream, no card
+    c.rank = c.rank ?? 1;
+    c.reliable = c.reliable ?? false;
+    if (!c.provider) c.provider = inferProvider(c.id);
+    db.byId.set(c.id, c);
+    db.channels.push(c);
+  }
+  db.channels.sort((a, b) => (a.rank - b.rank) || String(a.name).localeCompare(String(b.name)));
 }

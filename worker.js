@@ -307,6 +307,55 @@ export default {
       return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
     }
 
+    // 2a) My Sources configs — per-device ONLY (mirrors favorites privacy
+    // model: a fresh device starts empty, nothing crosses devices).
+    // Unified schema across adapters: {id,name,type:m3u|xtream|hdhomerun|tve|ott,...typeFields}
+    if (url.pathname === '/api/sources') {
+      const dev = getDeviceId(request);
+      if (!dev) return new Response('X-Device-Id required', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+      const key = `dev:${dev}:sources`;
+      const SRC_TYPES = new Set(['m3u', 'xtream', 'hdhomerun', 'tve', 'ott']);
+      const isHttpUrl = u => typeof u === 'string' && /^https?:\/\/.+/i.test(u) && u.length <= 500;
+      const validSource = s => {
+        if (!s || typeof s !== 'object') return false;
+        if (typeof s.id !== 'string' || !/^[\w-]{1,40}$/.test(s.id)) return false;
+        if (typeof s.name !== 'string' || s.name.length > 80) return false;
+        if (!SRC_TYPES.has(s.type)) return false;
+        if (s.type === 'm3u' && !isHttpUrl(s.url)) return false;
+        if (s.type === 'xtream' && !(isHttpUrl(s.host) && typeof s.username === 'string' && typeof s.password === 'string')) return false;
+        if (s.type === 'hdhomerun' && !isHttpUrl(s.base)) return false;
+        return true;
+      };
+      if (request.method === 'GET') {
+        let val = { sources: [] };
+        try { val = await env.STATUS.get(key, 'json') || val; } catch (e) {}
+        return new Response(JSON.stringify(val), {
+          status: 200,
+          headers: withCors({ 'Content-Type': 'application/json' }, request),
+        });
+      }
+      if (request.method === 'PUT') {
+        if (!(await rateLimit(env, 'src:' + dev, 10))) {
+          return new Response('rate limited', { status: 429, headers: withCors({ 'Content-Type': 'text/plain', 'Retry-After': '30' }, request) });
+        }
+        const raw = await request.text();
+        if (raw.length > MAX_BODY_BYTES) {
+          return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch (e) {
+          return new Response('invalid JSON', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
+        const list = Array.isArray(parsed.sources) ? parsed.sources : null;
+        if (!list || list.length > 20 || !list.every(validSource)) {
+          return new Response('invalid source entry', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
+        }
+        await env.STATUS.put(key, raw);
+        return new Response('ok', { status: 200, headers: withCors(null, request) });
+      }
+      return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
+    }
+
     // 2b) Nightly-probed "confirmed working" shortlist (P0-B). Rebuilds lazily when stale.
     if (url.pathname === '/shortlist' && request.method === 'GET') {
       const payload = await getShortlist(env);
@@ -340,46 +389,7 @@ export default {
       return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
     }
 
-    // 2c) Per-device custom sources (user's own playlists — bring-your-own-subscription)
-    if (url.pathname === '/api/sources') {
-      const dev = getDeviceId(request);
-      if (!dev) return new Response('X-Device-Id required', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
-      const key = `dev:${dev}:sources`;
-      if (request.method === 'GET') {
-        let val = { sources: [] };
-        try { val = await env.STATUS.get(key, 'json') || val; } catch (e) {}
-        return new Response(JSON.stringify(val), {
-          status: 200,
-          headers: withCors({ 'Content-Type': 'application/json' }, request),
-        });
-      }
-      if (request.method === 'PUT') {
-        if (!rateLimit(env, 'src:' + dev, 10)) {
-          return new Response('rate limited', { status: 429, headers: withCors(null, request) });
-        }
-        const raw = await request.text();
-        if (raw.length > MAX_BODY_BYTES) {
-          return new Response('payload too large', { status: 413, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
-        }
-        let parsed;
-        try { parsed = JSON.parse(raw); } catch (e) {
-          return new Response('invalid JSON', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
-        }
-        const list = Array.isArray(parsed.sources) ? parsed.sources : null;
-        if (!list || list.length > 10) {
-          return new Response('invalid sources', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
-        }
-        for (const s of list) {
-          if (typeof s.id !== 'string' || typeof s.name !== 'string' ||
-              typeof s.url !== 'string' || !/^https:\/\//i.test(s.url)) {
-            return new Response('invalid source entry', { status: 400, headers: withCors({ 'Content-Type': 'text/plain' }, request) });
-          }
-        }
-        await env.STATUS.put(key, raw);
-        return new Response('ok', { status: 200, headers: withCors(null, request) });
-      }
-      return new Response('method not allowed', { status: 405, headers: withCors(null, request) });
-    }
+    // (Per-device custom sources live at /api/sources — see 2a above.)
 
     // 3) Phone‑as‑remote WebSocket endpoint.
     if (url.pathname === '/remote' && request.method === 'GET' && request.headers.get('upgrade') === 'websocket') {

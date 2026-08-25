@@ -12,10 +12,11 @@ import { getStatus, getStatusReason, initTracking, testStream, startBackgroundTe
 import { loadWorkingSet } from './api.js';
 import { play, stopPlayback, primeStatus } from './player.js';
 import { addToWall, mountWall, clearWall, wallState } from './wall.js';
-import * as mySources from './sources.js';
 import { renderGrid, bindGrid, updateVisibleDots, updateFavButtons, cardHTML } from './grid.js';
 import { applyTheme, setTheme, setAccent } from './themes.js';
 import { registerSW } from './pwa.js';
+import { initSources, refreshIntoDb, testConfig, upsert, removeConfig, makeDraft, getConfigs } from './sources/index.js';
+import { mountGrandma, reenterEasyTV } from './grandma.js';
 
 // ============ Constants ============
 const AVATARS = ['\u{1F43A}', '\u{1F98A}', '\u{1F419}', '\u{1F42C}', '\u{1F984}', '\u{1F996}', '\u{1F43B}', '\u{1F98E}'];
@@ -194,12 +195,14 @@ async function boot() {
     await loadAll(msg => setBootMsg(msg));
     const workingSet = await loadWorkingSet();
     mergeWorkingSet(workingSet);
-    // User-supplied sources (bring-your-own playlist) — merged after catalog.
-    const srcList = await mySources.fetchSources();
-    if (srcList.length) {
-      await mySources.mergeSources(srcList);
-      render(); // include My Channels in the tree
-    }
+
+    // My Sources (owner entitlements: M3U/Xtream/OTA) — merged before the tree
+    // builds so owner channels appear everywhere on the first paint. The old
+    // js/sources.js flow is delegated to from the same engine; no second pass.
+    try {
+      await initSources();
+      await refreshIntoDb(msg => setBootMsg(msg));
+    } catch (e) { console.warn('[PRISM] sources skipped:', e.message); }
 
     // Pull this device's favorites from KV (local-first merge).
     try {
@@ -226,6 +229,9 @@ async function boot() {
     patch({ route: parseHash(), ready: true });
     document.getElementById('boot')?.remove();
     startBackgroundTesting(); // NEW: Auto-start background testing at end of boot (Bug Fix #8)
+    // Easy TV (grandma mode): default interface for this deployment. The
+    // advanced app stays fully functional underneath; ⚙ hold exits.
+    if (state.grandma) mountGrandma();
     setInterval(() => { if (!document.hidden) updateVisibleDots(); }, 2500); // audit P2-D: skip work in background tabs
     setInterval(updateCountsChip, 3000);
     updateCountsChip();
@@ -507,7 +513,8 @@ function specialRow(kind, label) {
   </div>`;
 }
 
-function openWatch(id, opts = {}) {
+// Exported for js/grandma.js (Easy TV reuses this exact playback path).
+export function openWatch(id, opts = {}) {
   lastWatchId = id;
   const ch = db.byId.get(id);
   if (!ch) return;
@@ -936,50 +943,54 @@ function bindChrome() {
     });
   }
 
-  // My Sources: add / list / remove user playlists
+  // My Sources: add (test-first) / list / remove — engine-backed.
   async function refreshSrcListUI() {
     const box = document.getElementById('srcList');
     if (!box) return;
-    const list = await mySources.fetchSources();
+    const list = getConfigs().filter(c => c.type === 'm3u');
     box.innerHTML = list.length
       ? list.map(s => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.78rem;padding:3px 0"><span>📄 ${esc(s.name)}</span><button data-delsrc="${esc(s.id)}" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:.9rem">✕</button></div>`).join('')
       : '<span style="color:var(--muted);font-size:.75rem">No sources yet — paste an M3U URL above.</span>';
     box.querySelectorAll('[data-delsrc]').forEach(btn => {
       btn.onclick = async () => {
-        const list = await mySources.fetchSources();
-        const entry = list.find(s => s.id === btn.dataset.delsrc);
-        const next = list.filter(s => s.id !== btn.dataset.delsrc);
-        await mySources.saveSources(next);
-        if (entry) mySources.removeSourceChannels('my_' + entry.id);
+        removeConfig(btn.dataset.delsrc);
+        await refreshIntoDb();
+        TREE = buildTree(db.channels);
+        render();
         refreshSrcListUI();
-        renderMain();
       };
     });
   }
   const srcAdd = document.getElementById('srcAdd');
   if (srcAdd && !srcAdd._bound) {
     srcAdd._bound = 1;
+    const resetBtn = (text, ms = 2500) => { srcAdd.textContent = text; setTimeout(() => { srcAdd.textContent = 'Add'; srcAdd.disabled = false; }, ms); };
     srcAdd.addEventListener('click', async () => {
       const nameEl = document.getElementById('srcName');
       const urlEl = document.getElementById('srcUrl');
       const url = (urlEl?.value || '').trim();
       const nm = (nameEl?.value || '').trim() || 'My playlist';
-      if (!/^https:\/\//i.test(url)) { srcAdd.textContent = '✗ https URL'; setTimeout(() => srcAdd.textContent = 'Add', 2000); return; }
-      const list = await mySources.fetchSources();
-      if (list.length >= 10 || list.some(s => s.url === url)) { srcAdd.textContent = '✗ dup/max'; setTimeout(() => srcAdd.textContent = 'Add', 2000); return; }
-      srcAdd.textContent = 'Fetching…';
-      const entry = { id: crypto.randomUUID().replace(/-/g, '').slice(0, 10), name: nm, url };
-      list.push(entry);
-      if (!await mySources.saveSources(list)) { srcAdd.textContent = '✗ save failed'; return; }
-      await mySources.mergeSources([entry]);
+      if (!/^https?:\/\//i.test(url)) { resetBtn('✗ http(s) URL', 2000); return; }
+      if (getConfigs().filter(c => c.type === 'm3u').some(s => s.url === url)) { resetBtn('✗ already added', 2000); return; }
+      srcAdd.disabled = true;
+      srcAdd.textContent = 'Testing…';
+      const draft = { ...makeDraft('m3u'), name: nm, url };
+      const r = await testConfig(draft);
+      if (!r.ok) { resetBtn('✗ ' + r.msg.slice(0, 22), 3500); return; }
+      srcAdd.textContent = 'Loading…';
+      upsert(draft);
+      await refreshIntoDb();
+      TREE = buildTree(db.channels);
+      render();
       nameEl.value = ''; urlEl.value = '';
       await refreshSrcListUI();
-      render();
-      srcAdd.textContent = '✓';
-      setTimeout(() => srcAdd.textContent = 'Add', 1500);
+      resetBtn(`✓ ${r.msg}`.slice(0, 26), 3000);
     });
-    refreshSrcListUI();
+    initSources().then(refreshSrcListUI).catch(() => {});
   }
+
+  // Back into Easy TV (grandma mode) from the advanced app.
+  wire('profEasyTv', () => reenterEasyTV());
 
   // Multi-view badges stay in sync after every state change
   if (!window._mvBadgeBound) {

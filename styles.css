@@ -399,3 +399,109 @@ body.embed .main { padding-top: calc(var(--topbar-h,60px) + 4px); }
 
 /* audit P1-5: docked player yields to guide drawer on small screens */
 @media (max-width: 900px) { body.guide-open .watch.docked { display: none; } }
+
+/* ================= Easy TV (grandma mode) =================
+   Rules: >=84px targets, >=1.4rem text, AAA contrast, zero jargon. */
+body.grandma-on { overflow: hidden; }
+#grandma {
+  position: fixed; inset: 0; z-index: 4000;
+  background: #0b0d12; color: #ffffff;
+  display: flex; flex-direction: column;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+.g-top { display: flex; align-items: baseline; gap: 20px; padding: 22px 28px 6px; }
+.g-clock { font-family: 'JetBrains Mono', monospace; font-size: 3rem; font-weight: 700; color: #fff; }
+.g-hello { font-size: 1.5rem; color: #e2e8f0; flex: 1; min-width: 0; }
+.g-setup {
+  width: 64px; height: 64px; border-radius: 50%;
+  border: none; background: transparent; color: #475569;
+  font-size: 1.5rem; cursor: pointer; opacity: .45;
+  transition: transform .25s ease, opacity .25s ease, background .25s ease;
+}
+.g-setup:hover { opacity: .8; }
+.g-setup.holding { transform: scale(1.3); opacity: 1; background: #f59e0b; color: #000; }
+
+.g-tabs {
+  display: flex; gap: 14px; padding: 14px 28px;
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(11,13,18,.92); backdrop-filter: blur(8px);
+}
+.g-tab {
+  padding: 20px 30px; min-height: 76px;
+  font-size: 1.45rem; font-weight: 700; color: #fff;
+  background: #161a24; border: 2px solid #2a3040; border-radius: 18px;
+  cursor: pointer;
+}
+.g-tab.on { background: var(--accent,#6366f1); border-color: transparent; color: #fff; }
+.g-tab:focus-visible { outline: 4px solid #fff; outline-offset: 3px; }
+
+.g-body { flex: 1; overflow-y: auto; padding: 10px 28px 40px; }
+.g-grid {
+  display: grid; gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+}
+.g-card {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 20px 16px; min-height: 170px;
+  background: #12151d; border: 3px solid #232937; border-radius: 22px;
+  color: #fff; cursor: pointer; text-align: center;
+}
+.g-card:hover { border-color: var(--accent,#6366f1); }
+.g-card:focus-visible { outline: 5px solid #fff; outline-offset: 3px; }
+.g-card:active { transform: scale(.97); }
+.g-logo { max-width: 80%; max-height: 84px; object-fit: contain; }
+.g-initial {
+  width: 96px; height: 96px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.6rem; font-weight: 800; background: #1e2532;
+}
+.g-name { font-size: 1.55rem; font-weight: 700; line-height: 1.25; word-break: break-word; }
+.g-dot { position: absolute; top: 14px; right: 14px; width: 20px; height: 20px; border-radius: 50%; }
+.g-ok   { background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.25); }
+.g-dead { background: #ef4444; }
+.g-wait { background: #eab308; }
+
+.g-empty { font-size: 1.7rem; color: #cbd5e1; text-align: center; padding: 70px 30px; line-height: 1.5; }
+
+.g-letters { display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 18px; }
+.g-letter {
+  min-width: 64px; min-height: 64px; padding: 8px 14px;
+  font-size: 1.35rem; font-weight: 800; color: #fff;
+  background: #161a24; border: 2px solid #2a3040; border-radius: 14px; cursor: pointer;
+}
+.g-letter.on { background: var(--accent,#6366f1); border-color: transparent; }
+.g-list { display: grid; gap: 12px; }
+.g-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  min-height: 88px; padding: 14px 26px;
+  font-size: 1.55rem; font-weight: 600; text-align: left;
+  color: #fff; background: #12151d; border: 3px solid #232937; border-radius: 18px; cursor: pointer;
+}
+.g-row:hover { border-color: var(--accent,#6366f1); }
+.g-row:focus-visible { outline: 5px solid #fff; outline-offset: 3px; }
+
+/* Giant controls inside the existing watch dialog */
+.g-ctrl { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; padding: 16px 12px 20px; }
+.g-big {
+  min-width: 150px; min-height: 84px; padding: 10px 24px;
+  font-size: 1.4rem; font-weight: 800; color: #fff;
+  background: #1a1e29; border: 2px solid #2a3040; border-radius: 18px; cursor: pointer;
+}
+.g-big:hover { border-color: var(--accent,#6366f1); }
+.g-big:focus-visible { outline: 4px solid #fff; outline-offset: 3px; }
+.g-exit { background: var(--accent,#6366f1); border-color: transparent; }
+.g-toast {
+  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%) translateY(20px);
+  background: #f59e0b; color: #000; font-size: 1.35rem; font-weight: 800;
+  padding: 14px 30px; border-radius: 999px; opacity: 0; pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease; z-index: 5000;
+}
+.g-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+.g-confirm { border: none; border-radius: 22px; padding: 30px; background: #12151d; color: #fff; }
+.g-confirm-text { font-size: 1.6rem; font-weight: 700; margin: 0 0 22px; }
+.g-confirm-row { display: flex; gap: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .g-setup, .g-card:active, .g-toast { transition: none; transform: none; }
+}

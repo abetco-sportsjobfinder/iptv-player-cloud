@@ -63,7 +63,9 @@ export async function play(id, opts = {}) {
       setStatus(id, 'working', 'playing');
       ui('');
     };
-    const url = proxied(stream.url);
+    // LAN-direct streams (HDHomeRun) bypass the worker by design: Cloudflare
+    // cannot reach a home LAN, and its SSRF guard would refuse the target.
+    const url = stream.direct ? stream.url : proxied(stream.url);
     if (v.canPlayType('application/vnd.apple.mpegurl')) {
       v.src = url;
       v.play().catch(() => {});
