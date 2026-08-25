@@ -229,9 +229,13 @@ async function boot() {
     patch({ route: parseHash(), ready: true });
     document.getElementById('boot')?.remove();
     startBackgroundTesting(); // NEW: Auto-start background testing at end of boot (Bug Fix #8)
-    // Easy TV (grandma mode): default interface for this deployment. The
-    // advanced app stays fully functional underneath; ⚙ hold exits.
-    if (state.grandma) mountGrandma();
+    // Easy TV (grandma mode): default interface for this deployment. A bug in
+    // this layer must NEVER take the whole app down (lesson: 2026-08-25 boot
+    // ReferenceError black-holed the UI). Fail open to the advanced shell.
+    if (state.grandma) {
+      try { mountGrandma(); }
+      catch (e) { console.error('[PRISM] easytv skipped:', e); state.grandma = false; }
+    }
     setInterval(() => { if (!document.hidden) updateVisibleDots(); }, 2500); // audit P2-D: skip work in background tabs
     setInterval(updateCountsChip, 3000);
     updateCountsChip();

@@ -12,6 +12,39 @@ const CHUNK = 60;
 let io = null;
 let pending = [];
 
+// ---------- LIVE HOVER PREVIEW (module scope: renderGrid must reach it) ----------
+let hp = null; // {cardId, video, hls}
+
+function stopHoverPreview() {
+  if (!hp) return;
+  try { hp.hls?.destroy(); } catch {}
+  try { hp.video?.pause(); hp.video?.remove(); } catch {}
+  hp = null;
+}
+
+function startHoverPreview(card) {
+  const id = card.dataset.id;
+  if (hp && hp.cardId === id) return;
+  stopHoverPreview();
+  if (getStatus(id) === 'dead') return;
+  const cands = streamCandidates(id);
+  if (!cands.length) return;
+  if (cands[0].direct) return; // LAN-direct: no CORS for hover preview; skip
+  const thumb = card.querySelector('.thumb');
+  if (!thumb) return;
+  const v = document.createElement('video');
+  v.muted = true; v.autoplay = true; v.playsInline = true;
+  v.setAttribute('playsinline', '');
+  v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;background:#000';
+  thumb.appendChild(v);
+  const hls = new Hls({ enableWorker: false, maxBufferLength: 4, liveSyncDuration: 4, fragLoadingTimeOut: 8000, fragLoadingMaxRetry: 1 });
+  hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) stopHoverPreview(); });
+  hls.loadSource(`${PROXY}?u=${encodeURIComponent(cands[0].url)}`);
+  hls.attachMedia(v);
+  v.play().catch(() => {});
+  hp = { cardId: id, video: v, hls };
+}
+
 export function cardHTML(c, isSelected) {
   const st = getStatus(c.id);
   const dot = { working: 'ok', dead: 'dead', testing: 'testing' }[st] || '';
@@ -129,39 +162,7 @@ export function bindGrid({ onOpen }) {
     onOpen.watch(id);
   });
 
-  // ---------- LIVE HOVER PREVIEW (what's actually on, right now) ----------
-  let hp = null; // {cardId, video, hls}
-
-  function stopHoverPreview() {
-    if (!hp) return;
-    try { hp.hls?.destroy(); } catch {}
-    try { hp.video?.pause(); hp.video?.remove(); } catch {}
-    hp = null;
-  }
-
-  function startHoverPreview(card) {
-    const id = card.dataset.id;
-    if (hp && hp.cardId === id) return;
-    stopHoverPreview();
-    if (getStatus(id) === 'dead') return;
-    const cands = streamCandidates(id);
-    if (!cands.length) return;
-    if (cands[0].direct) return; // LAN-direct: no CORS for hover preview; skip
-    const thumb = card.querySelector('.thumb');
-    if (!thumb) return;
-    const v = document.createElement('video');
-    v.muted = true; v.autoplay = true; v.playsInline = true;
-    v.setAttribute('playsinline', '');
-    v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:2;background:#000';
-    thumb.appendChild(v);
-    const hls = new Hls({ enableWorker: false, maxBufferLength: 4, liveSyncDuration: 4, fragLoadingTimeOut: 8000, fragLoadingMaxRetry: 1 });
-    hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) stopHoverPreview(); });
-    hls.loadSource(`${PROXY}?u=${encodeURIComponent(cands[0].url)}`);
-    hls.attachMedia(v);
-    v.play().catch(() => {});
-    hp = { cardId: id, video: v, hls };
-  }
-
+  // ---------- LIVE HOVER PREVIEW (implementations hoisted to module scope) ----------
   grid.addEventListener('mouseover', e => {
     const card = e.target.closest('.card');
     if (card) startHoverPreview(card); else stopHoverPreview();

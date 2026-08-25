@@ -8,7 +8,7 @@
 // It reuses player.js/openWatch() — no second HLS pipeline to maintain.
 
 import { db } from './api.js';
-import { state, patch, esc } from './state.js';
+import { state, patch, esc, onStateChange } from './state.js';
 import { matchesCategory } from './tree.js';
 import { getStatus } from './tracking.js';
 import { openWatch } from './main.js';
